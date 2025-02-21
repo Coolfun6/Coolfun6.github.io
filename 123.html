@@ -21,7 +21,7 @@
             justify-content: center;
             align-items: center;
             position: relative;
-            -webkit-user-select: none; /* 防止選擇文字 */
+            -webkit-user-select: none;
             user-select: none;
         }
 
@@ -202,11 +202,26 @@
             display: none;
         }
 
-        .shoot-btn:hover {
+        .jump-btn {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            width: 60px;
+            height: 60px;
+            background: #2196f3 url('https://img.icons8.com/ios-filled/50/ffffff/up.png') no-repeat center;
+            background-size: 40px;
+            border: 3px solid #000;
+            border-radius: 50%;
+            cursor: pointer;
+            z-index: 2;
+            display: none;
+        }
+
+        .shoot-btn:hover, .jump-btn:hover {
             background-color: #f44336;
         }
 
-        .shoot-btn:active {
+        .shoot-btn:active, .jump-btn:active {
             transform: scale(0.9);
         }
 
@@ -269,6 +284,7 @@
             cursor: pointer;
             transition: all 0.3s ease;
             text-shadow: 1px 1px 0 #000;
+            z-index: 3; /* 確保按鈕在說明畫面之上 */
         }
 
         .mode-btn:hover, .start-btn:hover {
@@ -322,14 +338,14 @@
             .speed-up, .extra-poop { width: 30px; height: 30px; }
             .cloud { width: 80px; height: 48px; }
             .cactus-bullet { width: 12px; height: 12px; }
-            .shoot-btn { width: 50px; height: 50px; background-size: 30px; }
+            .shoot-btn, .jump-btn { width: 50px; height: 50px; background-size: 30px; }
         }
 
         @media (max-height: 500px) {
             .ground { height: 20vh; }
             .dog { bottom: 20vh; }
             .cactus, .big-cactus, .spiky-cactus, .poop, .speed-up, .extra-poop { bottom: 20vh; }
-            .shoot-btn { bottom: 30px; }
+            .shoot-btn, .jump-btn { bottom: 30px; }
         }
     </style>
 </head>
@@ -346,12 +362,13 @@
         <div class="score" id="score">分數: 0</div>
         <div class="rage-meter" id="rage-meter">狂暴: 0%</div>
         <div class="poop-count" id="poop-count">大便: 3</div>
-        <button class="shoot-btn" id="shoot-btn" ontouchstart="throwPoop()" onmousedown="throwPoop()"></button>
+        <button class="shoot-btn" id="shoot-btn"></button>
+        <button class="jump-btn" id="jump-btn"></button>
         <div class="intro-screen" id="intro-screen">
             <h1>小狗冒險</h1>
             <p>歡迎來到這款漫畫風小狗遊戲！幫助小狗跑過草地，盡量獲得高分吧！</p>
             <p><strong>操作說明：</strong></p>
-            <p>- 跳躍：空格鍵 / 上箭頭鍵 / 觸控畫面左側</p>
+            <p>- 跳躍：空格鍵 / 上箭頭鍵 / 觸控左下角按鈕</p>
             <p>- 丟大便（射擊與狂暴模式）：Shift 鍵 / 觸控右下角按鈕（每場限3次，可拾取道具增加）</p>
             <p><strong>模式說明：</strong></p>
             <p>- 普通模式：跳躍避開普通與高大仙人掌，分數隨時間增加。</p>
@@ -360,7 +377,7 @@
             <p><strong>隨機事件：</strong>加速道具（提升速度5秒）、額外大便。</p>
             <p><strong>注意：</strong>射擊模式與狂暴模式中，碰到射擊仙人掌的子彈即結束！</p>
             <p><strong>關卡加速：</strong>遊戲隨時間變快，500分和1000分時進一步加速。</p>
-            <button class="start-btn" onclick="showModeSelection()">開始遊戲</button>
+            <button class="start-btn" id="start-btn">開始遊戲</button>
         </div>
         <div class="mode-selection" id="mode-selection">
             <button class="mode-btn" onclick="startGame('normal')">普通模式</button>
@@ -376,8 +393,10 @@
         const rageMeter = document.getElementById('rage-meter');
         const poopCount = document.getElementById('poop-count');
         const shootBtn = document.getElementById('shoot-btn');
+        const jumpBtn = document.getElementById('jump-btn');
         const introScreen = document.getElementById('intro-screen');
         const modeSelection = document.getElementById('mode-selection');
+        const startBtn = document.getElementById('start-btn');
         let score = 0;
         let rage = 0;
         let poops = 3;
@@ -417,6 +436,7 @@
                 setTimeout(() => {
                     dog.classList.remove('jump');
                     isJumping = false;
+                    canJump = true; // 重置為可再次跳躍
                 }, 500);
             }
         }
@@ -469,10 +489,12 @@
             if (gameMode === 'shooting' || gameMode === 'rage') {
                 poopCount.style.display = 'block';
                 shootBtn.style.display = 'block';
+                jumpBtn.style.display = 'block';
                 poopCount.textContent = `大便: ${poops}`;
             } else {
                 poopCount.style.display = 'none';
                 shootBtn.style.display = 'none';
+                jumpBtn.style.display = 'block';
             }
         }
 
@@ -499,7 +521,7 @@
             } else if (rand < 0.8 || gameMode === 'normal') {
                 cactus = document.createElement('div');
                 cactus.className = 'big-cactus';
-            } else { // 僅射擊和狂暴模式生成射擊仙人掌
+            } else {
                 cactus = document.createElement('div');
                 cactus.className = 'spiky-cactus';
                 spawnCactusBullet(cactus);
@@ -683,26 +705,25 @@
             if (e.key === ' ' || e.key === 'ArrowUp') canJump = true;
         });
 
-        // 手機觸控處理
-        let touchStartX = null;
-        gameContainer.addEventListener('touchstart', (e) => {
-            if (!gameStarted) return; // 說明畫面時不觸發
+        // 按鈕觸控與點擊事件
+        jumpBtn.addEventListener('click', jump);
+        shootBtn.addEventListener('click', throwPoop);
+
+        jumpBtn.addEventListener('touchstart', (e) => {
             e.preventDefault();
-            if (e.target !== shootBtn) { // 排除射擊按鈕
-                touchStartX = e.touches[0].clientX;
-                if (touchStartX < window.innerWidth / 2) jump(); // 左半螢幕跳躍
-            }
+            jump();
         }, { passive: false });
 
-        gameContainer.addEventListener('touchend', (e) => {
-            e.preventDefault();
-            touchStartX = null;
-        }, { passive: false });
-
-        // 射擊按鈕觸控
         shootBtn.addEventListener('touchstart', (e) => {
             e.preventDefault();
             throwPoop();
+        }, { passive: false });
+
+        // 開始按鈕觸控與點擊事件
+        startBtn.addEventListener('click', showModeSelection);
+        startBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            showModeSelection();
         }, { passive: false });
     </script>
 </body>
