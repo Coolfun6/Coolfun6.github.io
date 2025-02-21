@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小狗冒險 - 漫畫風</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Comic Sans MS', 'Arial', sans-serif;
+        }
+
+        body {
+            width: 100vw;
+            height: 100vh;
+            background: linear-gradient(135deg, #87ceeb, #4682b4);
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        .background-shapes {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+
+        .shape {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border: 3px solid #000;
+            animation: float 15s infinite ease-in-out;
+        }
+
+        .shape:nth-child(1) { width: 100px; height: 100px; top: 15%; left: 25%; }
+        .shape:nth-child(2) { width: 150px; height: 150px; top: 55%; left: 75%; }
+        .shape:nth-child(3) { width: 80px; height: 80px; top: 85%; left: 35%; }
+
+        .cloud {
+            position: absolute;
+            width: 100px;
+            height: 60px;
+            background: url('https://img.icons8.com/ios-filled/50/ffffff/cloud.png') no-repeat center;
+            background-size: contain;
+            z-index: 1;
+            animation: drift 20s linear infinite;
+        }
+
+        .game-container {
+            width: 100vw;
+            height: 100vh;
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(5px);
+            border: 5px solid #000;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            z-index: 1;
+        }
+
+        .ground {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            height: 100px;
+            background: #4caf50 url('https://img.icons8.com/ios-filled/50/ffffff/grass.png') repeat-x bottom;
+            background-size: 50px 50px;
+            border-top: 5px solid #000;
+        }
+
+        .dog {
+            width: 80px;
+            height: 80px;
+            background: url('https://img.icons8.com/ios-filled/50/ffffff/dog.png') no-repeat center;
+            background-size: contain;
+            position: absolute;
+            left: 50px;
+            bottom: 100px;
+            transition: bottom 0.2s ease;
+        }
+
+        .dog.walking {
+            animation: walk 0.5s steps(2) infinite;
+        }
+
+        .dog.jump {
+            bottom: 250px;
+        }
+
+        .dog.rage {
+            filter: hue-rotate(90deg) brightness(1.5);
+        }
+
+        .cactus {
+            width: 40px;
+            height: 80px;
+            background: url('https://img.icons8.com/ios-filled/50/ffffff/cactus.png') no-repeat center;
+            background-size: contain;
+            position: absolute;
+            bottom: 100px;
+            right: -40px;
+        }
+
+        .big-cactus {
+            width: 60px;
+            height: 120px;
+            background: url('https://img.icons8.com/ios-filled/50/ffffff/cactus.png') no-repeat center;
+            background-size: contain;
+            position: absolute;
+            bottom: 100px;
+            right: -60px;
+        }
+
+        .poop {
+            width: 50px;
+            height: 50px;
+            background: url('https://img.icons8.com/ios-filled/50/ffffff/poop.png') no-repeat center;
+            background-size: contain;
+            position: absolute;
+            bottom: 130px;
+            left: 130px;
+        }
+
+        .speed-up {
+            width: 40px;
+            height: 40px;
+            background: url('https://img.icons8.com/ios-filled/50/ffffff/speed.png') no-repeat center;
+            background-size: contain;
+            position: absolute;
+            bottom: 150px;
+            right: -40px;
+        }
+
+        .extra-poop {
+            width: 40px;
+            height: 40px;
+            background: url('https://img.icons8.com/ios-filled/50/ffffff/poop.png') no-repeat center;
+            background-size: contain;
+            position: absolute;
+            bottom: 150px;
+            right: -40px;
+        }
+
+        .score, .rage-meter, .poop-count {
+            position: absolute;
+            top: 20px;
+            color: #ff5722;
+            font-size: 28px;
+            text-shadow: 2px 2px 0 #000;
+        }
+
+        .score { left: 20px; }
+        .rage-meter { right: 20px; display: none; }
+        .poop-count { left: 150px; display: none; }
+
+        .intro-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: #fff;
+            padding: 20px;
+            text-align: center;
+            z-index: 2;
+            border: 5px solid #000;
+        }
+
+        .intro-screen h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            color: #ffeb3b;
+            text-shadow: 3px 3px 0 #000;
+        }
+
+        .intro-screen p {
+            font-size: 20px;
+            margin-bottom: 15px;
+            max-width: 800px;
+            text-shadow: 1px 1px 0 #000;
+        }
+
+        .mode-selection {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+            z-index: 2;
+            border: 5px solid #000;
+        }
+
+        .mode-btn, .start-btn {
+            padding: 15px 30px;
+            background: #ff5722;
+            border: 3px solid #000;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-shadow: 1px 1px 0 #000;
+        }
+
+        .mode-btn:hover, .start-btn:hover {
+            background: #f44336;
+            transform: scale(1.05);
+        }
+
+        .mode-btn:active, .start-btn:active {
+            transform: scale(0.95);
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-30px); }
+        }
+
+        @keyframes drift {
+            0% { right: -120px; }
+            100% { right: 100vw; }
+        }
+
+        @keyframes walk {
+            0% { background: url('https://img.icons8.com/ios-filled/50/ffffff/dog.png') no-repeat center; }
+            50% { background: url('https://img.icons8.com/ios-filled/50/ffffff/dog-walking.png') no-repeat center; }
+            100% { background: url('https://img.icons8.com/ios-filled/50/ffffff/dog.png') no-repeat center; }
+        }
+    </style>
+</head>
+<body>
+    <div class="background-shapes">
+        <div class="shape"></div>
+        <div class="shape"></div>
+        <div class="shape"></div>
+    </div>
+
+    <div class="game-container">
+        <div class="ground"></div>
+        <div class="dog" id="dog"></div>
+        <div class="score" id="score">分數: 0</div>
+        <div class="rage-meter" id="rage-meter">狂暴: 0%</div>
+        <div class="poop-count" id="poop-count">大便: 3</div>
+        <div class="intro-screen" id="intro-screen">
+            <h1>小狗冒險</h1>
+            <p>歡迎來到這款漫畫風小狗遊戲！幫助小狗跑過草地，盡量獲得高分吧！</p>
+            <p><strong>操作說明：</strong></p>
+            <p>- 跳躍：空格鍵 / 上箭頭鍵 / 觸控畫面</p>
+            <p>- 丟大便（射擊與狂暴模式）：Shift 鍵 / 觸控放開（每場限3次，可拾取道具增加）</p>
+            <p><strong>模式說明：</strong></p>
+            <p>- 普通模式：跳躍避開仙人掌，分數隨時間增加。</p>
+            <p>- 射擊模式：3次大便可清除仙人掌，分數隨時間增加。</p>
+            <p>- 狂暴模式：3次大便 + 狂暴狀態（能量滿後5秒無敵），分數隨時間增加。</p>
+            <p><strong>隨機事件：</strong>加速道具（提升速度5秒）、額外大便、大仙人掌。</p>
+            <p><strong>注意：</strong>遊戲速度會隨時間逐漸加快！</p>
+            <button class="start-btn" onclick="showModeSelection()">開始遊戲</button>
+        </div>
+        <div class="mode-selection" id="mode-selection">
+            <button class="mode-btn" onclick="startGame('normal')">普通模式</button>
+            <button class="mode-btn" onclick="startGame('shooting')">射擊模式</button>
+            <button class="mode-btn" onclick="startGame('rage')">狂暴模式</button>
+        </div>
+    </div>
+
+    <script>
+        const dog = document.getElementById('dog');
+        const gameContainer = document.querySelector('.game-container');
+        const scoreDisplay = document.getElementById('score');
+        const rageMeter = document.getElementById('rage-meter');
+        const poopCount = document.getElementById('poop-count');
+        const introScreen = document.getElementById('intro-screen');
+        const modeSelection = document.getElementById('mode-selection');
+        let score = 0;
+        let rage = 0;
+        let poops = 3;
+        let isJumping = false;
+        let isRaging = false;
+        let gameStarted = false;
+        let gameMode = '';
+        let canJump = true;
+        let cactusInterval;
+        let scoreInterval;
+        let eventInterval;
+        let cloudInterval;
+        let speedBoost = 1;
+        let baseSpeed = 2; // 基礎速度（秒）
+        let speedIncreaseInterval;
+
+        // 生成漂浮雲朵
+        function spawnCloud() {
+            const cloud = document.createElement('div');
+            cloud.className = 'cloud';
+            cloud.style.top = `${Math.random() * 20 + 5}%`;
+            gameContainer.appendChild(cloud);
+            setTimeout(() => cloud.remove(), 20000);
+        }
+
+        // 顯示模式選擇
+        function showModeSelection() {
+            introScreen.style.display = 'none';
+            modeSelection.style.display = 'flex';
+        }
+
+        // 跳躍功能
+        function jump(e) {
+            if (!isJumping && gameStarted && canJump) {
+                isJumping = true;
+                canJump = false;
+                dog.classList.add('jump');
+                setTimeout(() => {
+                    dog.classList.remove('jump');
+                    isJumping = false;
+                }, 500);
+            }
+        }
+
+        // 丟大便功能
+        function throwPoop() {
+            if (gameStarted && (gameMode === 'shooting' || gameMode === 'rage') && poops > 0) {
+                poops--;
+                poopCount.textContent = `大便: ${poops}`;
+                const poop = document.createElement('div');
+                poop.className = 'poop';
+                gameContainer.appendChild(poop);
+
+                let poopSpeed = 1000 / speedBoost; // 根據遊戲速度調整大便飛行時間
+                poop.style.animation = `shoot ${poopSpeed / 1000}s linear`;
+
+                const poopInterval = setInterval(() => {
+                    const poopRect = poop.getBoundingClientRect();
+                    document.querySelectorAll('.cactus, .big-cactus').forEach(cactus => {
+                        const cactusRect = cactus.getBoundingClientRect();
+                        if (
+                            poopRect.right > cactusRect.left &&
+                            poopRect.left < cactusRect.right &&
+                            poopRect.bottom > cactusRect.top &&
+                            poopRect.top < cactusRect.bottom
+                        ) {
+                            cactus.remove();
+                            poop.remove();
+                            clearInterval(poopInterval);
+                        }
+                    });
+
+                    if (poopRect.left > gameContainer.getBoundingClientRect().right) {
+                        poop.remove();
+                        clearInterval(poopInterval);
+                    }
+                }, 10);
+
+                setTimeout(() => {
+                    if (poop.parentNode) poop.remove();
+                }, poopSpeed);
+            }
+        }
+
+        // 更新分數和狂暴計量
+        function updateScoreAndRage() {
+            scoreDisplay.textContent = `分數: ${score}`;
+            if (gameMode === 'rage') {
+                rageMeter.style.display = 'block';
+                rageMeter.textContent = `狂暴: ${Math.min(rage, 100)}%`;
+                if (rage >= 100 && !isRaging) enterRageMode();
+            } else {
+                rageMeter.style.display = 'none';
+            }
+            if (gameMode === 'shooting' || gameMode === 'rage') {
+                poopCount.style.display = 'block';
+                poopCount.textContent = `大便: ${poops}`;
+            } else {
+                poopCount.style.display = 'none';
+            }
+        }
+
+        // 狂暴模式
+        function enterRageMode() {
+            isRaging = true;
+            dog.classList.add('rage');
+            rage = 0;
+            updateScoreAndRage();
+
+            setTimeout(() => {
+                isRaging = false;
+                dog.classList.remove('rage');
+            }, 5000);
+        }
+
+        // 生成仙人掌
+        function spawnCactus() {
+            const isBig = Math.random() < 0.2;
+            const cactus = document.createElement('div');
+            cactus.className = isBig ? 'big-cactus' : 'cactus';
+            gameContainer.appendChild(cactus);
+
+            cactus.style.animation = `moveCactus ${baseSpeed / speedBoost}s linear`;
+
+            const checkCollision = setInterval(() => {
+                const dogRect = dog.getBoundingClientRect();
+                const cactusRect = cactus.getBoundingClientRect();
+
+                if (
+                    dogRect.right > cactusRect.left &&
+                    dogRect.left < cactusRect.right &&
+                    dogRect.bottom > cactusRect.top &&
+                    !isRaging
+                ) {
+                    gameOver();
+                    clearInterval(checkCollision);
+                } else if (isRaging && 
+                    dogRect.right > cactusRect.left &&
+                    dogRect.left < cactusRect.right) {
+                    cactus.remove();
+                    clearInterval(checkCollision);
+                }
+
+                if (cactusRect.right < 0) {
+                    cactus.remove();
+                    if (gameMode === 'rage') rage += 5;
+                    updateScoreAndRage();
+                    clearInterval(checkCollision);
+                }
+            }, 10);
+        }
+
+        // 隨機事件
+        function spawnRandomEvent() {
+            const rand = Math.random();
+            if (rand < 0.3) {
+                const speedUp = document.createElement('div');
+                speedUp.className = 'speed-up';
+                gameContainer.appendChild(speedUp);
+
+                speedUp.style.animation = `moveCactus ${baseSpeed / speedBoost}s linear`;
+
+                const checkSpeed = setInterval(() => {
+                    const dogRect = dog.getBoundingClientRect();
+                    const speedRect = speedUp.getBoundingClientRect();
+
+                    if (
+                        dogRect.right > speedRect.left &&
+                        dogRect.left < speedRect.right &&
+                        dogRect.bottom > speedRect.top
+                    ) {
+                        speedUp.remove();
+                        speedBoost = 1.5;
+                        setTimeout(() => speedBoost = 1, 5000);
+                        clearInterval(checkSpeed);
+                    }
+
+                    if (speedRect.right < 0) {
+                        speedUp.remove();
+                        clearInterval(checkSpeed);
+                    }
+                }, 10);
+            } else if (rand < 0.5) {
+                const extraPoop = document.createElement('div');
+                extraPoop.className = 'extra-poop';
+                gameContainer.appendChild(extraPoop);
+
+                extraPoop.style.animation = `moveCactus ${baseSpeed / speedBoost}s linear`;
+
+                const checkPoop = setInterval(() => {
+                    const dogRect = dog.getBoundingClientRect();
+                    const poopRect = extraPoop.getBoundingClientRect();
+
+                    if (
+                        dogRect.right > poopRect.left &&
+                        dogRect.left < poopRect.right &&
+                        dogRect.bottom > poopRect.top
+                    ) {
+                        extraPoop.remove();
+                        poops++;
+                        poopCount.textContent = `大便: ${poops}`;
+                        clearInterval(checkPoop);
+                    }
+
+                    if (poopRect.right < 0) {
+                        extraPoop.remove();
+                        clearInterval(checkPoop);
+                    }
+                }, 10);
+            }
+        }
+
+        // 開始遊戲
+        function startGame(mode) {
+            if (!gameStarted) {
+                gameStarted = true;
+                gameMode = mode;
+                modeSelection.style.display = 'none';
+                score = 0;
+                rage = 0;
+                poops = 3;
+                speedBoost = 1;
+                baseSpeed = 2; // 初始速度2秒
+                dog.classList.add('walking');
+                updateScoreAndRage();
+                cactusInterval = setInterval(spawnCactus, 2000);
+                scoreInterval = setInterval(() => {
+                    score += Math.floor(1 * speedBoost);
+                    updateScoreAndRage();
+                }, 100);
+                eventInterval = setInterval(spawnRandomEvent, 5000);
+                cloudInterval = setInterval(spawnCloud, 3000);
+                speedIncreaseInterval = setInterval(() => {
+                    baseSpeed = Math.max(0.5, baseSpeed - 0.1); // 每30秒減少0.1秒，最快0.5秒
+                    document.querySelectorAll('.cactus, .big-cactus, .speed-up, .extra-poop').forEach(el => {
+                        el.style.animationDuration = `${baseSpeed / speedBoost}s`;
+                    });
+                }, 30000); // 每30秒加速
+            }
+        }
+
+        // 遊戲結束
+        function gameOver() {
+            gameStarted = false;
+            clearInterval(cactusInterval);
+            clearInterval(scoreInterval);
+            clearInterval(eventInterval);
+            clearInterval(cloudInterval);
+            clearInterval(speedIncreaseInterval);
+            dog.classList.remove('walking');
+            alert(`遊戲結束！你的分數是: ${score}`);
+            poops = 3;
+            updateScoreAndRage();
+            introScreen.style.display = 'flex';
+            document.querySelectorAll('.cactus, .big-cactus, .poop, .speed-up, .extra-poop, .cloud').forEach(el => el.remove());
+        }
+
+        // 事件監聽
+        document.addEventListener('keydown', (e) => {
+            if ((e.key === ' ' || e.key === 'ArrowUp') && !e.repeat) jump(e);
+            if (e.key === 'Shift') throwPoop();
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.key === ' ' || e.key === 'ArrowUp') canJump = true;
+        });
+
+        gameContainer.addEventListener('touchstart', jump);
+        gameContainer.addEventListener('touchend', (e) => {
+            if (e.touches.length === 0) throwPoop();
+        });
+    </script>
+</body>
+</html>
