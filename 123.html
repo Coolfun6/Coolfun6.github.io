@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>小狗冒險 - 漫畫風</title>
     <style>
         * {
@@ -21,7 +21,6 @@
             justify-content: center;
             align-items: center;
             position: relative;
-            touch-action: none; /* 禁用手機默認觸控行為 */
             -webkit-user-select: none; /* 防止選擇文字 */
             user-select: none;
         }
@@ -106,7 +105,7 @@
             background: url('https://img.icons8.com/ios-filled/50/ffffff/cactus.png') no-repeat center;
             background-size: contain;
             position: absolute;
-            bottom: 15vh; /* 與狗平行 */
+            bottom: 15vh;
             right: -40px;
             animation: moveCactus 2s linear infinite;
         }
@@ -687,6 +686,7 @@
         // 手機觸控處理
         let touchStartX = null;
         gameContainer.addEventListener('touchstart', (e) => {
+            if (!gameStarted) return; // 說明畫面時不觸發
             e.preventDefault();
             if (e.target !== shootBtn) { // 排除射擊按鈕
                 touchStartX = e.touches[0].clientX;
@@ -694,16 +694,12 @@
             }
         }, { passive: false });
 
-        gameContainer.addEventListener('touchmove', (e) => {
-            e.preventDefault(); // 防止滾動
-        }, { passive: false });
-
         gameContainer.addEventListener('touchend', (e) => {
             e.preventDefault();
             touchStartX = null;
         }, { passive: false });
 
-        // 射擊按鈕觸控（兼容手機）
+        // 射擊按鈕觸控
         shootBtn.addEventListener('touchstart', (e) => {
             e.preventDefault();
             throwPoop();
