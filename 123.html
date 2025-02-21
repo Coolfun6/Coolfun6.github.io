@@ -87,7 +87,7 @@
         }
 
         .dog.walking {
-            animation: walkDog 0.8s infinite linear; /* 自訂走路動畫 */
+            animation: walkDog 0.8s infinite linear;
         }
 
         .dog.jump {
@@ -104,7 +104,7 @@
             background: url('https://img.icons8.com/ios-filled/50/ffffff/cactus.png') no-repeat center;
             background-size: contain;
             position: absolute;
-            bottom: 15vh;
+            bottom: 15vh; /* 完全貼平 */
             right: -40px;
             animation: moveCactus 2s linear infinite;
         }
@@ -120,6 +120,17 @@
             animation: moveCactus 2s linear infinite;
         }
 
+        .spiky-cactus {
+            width: 50px;
+            height: 100px;
+            background: url('https://img.icons8.com/ios-filled/50/ffffff/cactus.png') no-repeat center;
+            background-size: contain;
+            position: absolute;
+            bottom: 15vh;
+            right: -50px;
+            animation: moveCactus 2s linear infinite;
+        }
+
         .poop {
             width: 50px;
             height: 50px;
@@ -129,6 +140,16 @@
             bottom: calc(15vh + 30px);
             left: 130px;
             animation: shoot 1s linear;
+        }
+
+        .cactus-bullet {
+            width: 15px;
+            height: 15px;
+            background: url('https://img.icons8.com/ios-filled/50/ffffff/bullet.png') no-repeat center;
+            background-size: contain;
+            position: absolute;
+            bottom: calc(15vh + 40px);
+            animation: cactusShoot 1.5s linear;
         }
 
         .speed-up {
@@ -164,6 +185,29 @@
         .score { left: 20px; }
         .rage-meter { right: 20px; display: none; }
         .poop-count { left: 150px; display: none; }
+
+        .shoot-btn {
+            position: absolute;
+            bottom: 20vh;
+            right: 20px;
+            width: 60px;
+            height: 60px;
+            background: #ff5722 url('https://img.icons8.com/ios-filled/50/ffffff/poop.png') no-repeat center;
+            background-size: 40px;
+            border: 3px solid #000;
+            border-radius: 50%;
+            cursor: pointer;
+            z-index: 2;
+            display: none; /* 初始隱藏，遊戲開始後顯示 */
+        }
+
+        .shoot-btn:hover {
+            background-color: #f44336;
+        }
+
+        .shoot-btn:active {
+            transform: scale(0.9);
+        }
 
         .intro-screen {
             position: absolute;
@@ -246,9 +290,9 @@
 
         @keyframes walkDog {
             0% { transform: translateY(0) rotate(0deg); } /* 站立 */
-            25% { transform: translateY(-8px) rotate(5deg); } /* 左腳抬高，身體略傾 */
+            25% { transform: translateY(-8px) rotate(5deg); } /* 左腳抬高，身體右傾 */
             50% { transform: translateY(0) rotate(0deg); } /* 回到地面 */
-            75% { transform: translateY(-8px) rotate(-5deg); } /* 右腳抬高，身體反傾 */
+            75% { transform: translateY(-8px) rotate(-5deg); } /* 右腳抬高，身體左傾 */
             100% { transform: translateY(0) rotate(0deg); } /* 回到初始 */
         }
 
@@ -262,19 +306,28 @@
             100% { left: 100vw; }
         }
 
+        @keyframes cactusShoot {
+            0% { left: 100%; }
+            100% { left: -60px; }
+        }
+
         @media (max-width: 768px) {
             .dog { width: 60px; height: 60px; }
             .cactus { width: 30px; height: 60px; }
             .big-cactus { width: 45px; height: 90px; }
+            .spiky-cactus { width: 40px; height: 80px; }
             .poop { width: 40px; height: 40px; }
             .speed-up, .extra-poop { width: 30px; height: 30px; }
             .cloud { width: 80px; height: 48px; }
+            .cactus-bullet { width: 12px; height: 12px; }
+            .shoot-btn { width: 50px; height: 50px; background-size: 30px; }
         }
 
         @media (max-height: 500px) {
             .ground { height: 20vh; }
             .dog { bottom: 20vh; }
-            .cactus, .big-cactus, .poop, .speed-up, .extra-poop { bottom: calc(20vh + 20px); }
+            .cactus, .big-cactus, .spiky-cactus, .poop, .speed-up, .extra-poop { bottom: calc(20vh); }
+            .shoot-btn { bottom: 25vh; }
         }
     </style>
 </head>
@@ -291,17 +344,19 @@
         <div class="score" id="score">分數: 0</div>
         <div class="rage-meter" id="rage-meter">狂暴: 0%</div>
         <div class="poop-count" id="poop-count">大便: 3</div>
+        <button class="shoot-btn" id="shoot-btn" onclick="throwPoop()"></button>
         <div class="intro-screen" id="intro-screen">
             <h1>小狗冒險</h1>
             <p>歡迎來到這款漫畫風小狗遊戲！幫助小狗跑過草地，盡量獲得高分吧！</p>
             <p><strong>操作說明：</strong></p>
             <p>- 跳躍：空格鍵 / 上箭頭鍵 / 觸控畫面</p>
-            <p>- 丟大便（射擊與狂暴模式）：Shift 鍵 / 觸控放開（每場限3次，可拾取道具增加）</p>
+            <p>- 丟大便（射擊與狂暴模式）：Shift 鍵 / 觸控右下角按鈕（每場限3次，可拾取道具增加）</p>
             <p><strong>模式說明：</strong></p>
             <p>- 普通模式：跳躍避開仙人掌，分數隨時間增加。</p>
             <p>- 射擊模式：3次大便可清除仙人掌，分數隨時間增加。</p>
             <p>- 狂暴模式：3次大便 + 狂暴狀態（能量滿後5秒無敵），分數隨時間增加。</p>
-            <p><strong>隨機事件：</strong>加速道具（提升速度5秒）、額外大便、大仙人掌。</p>
+            <p><strong>隨機事件：</strong>加速道具（提升速度5秒）、額外大便、多種仙人掌。</p>
+            <p><strong>注意：</strong>小心射擊仙人掌的子彈，碰到即結束！</p>
             <p><strong>關卡加速：</strong>遊戲隨時間變快，500分和1000分時進一步加速。</p>
             <button class="start-btn" onclick="showModeSelection()">開始遊戲</button>
         </div>
@@ -312,14 +367,23 @@
         </div>
     </div>
 
+    <!-- 音效 -->
+    <audio id="jumpSound" src="https://cdn.pixabay.com/audio/2022/03/24/02-43-01-334_1.mp3"></audio> <!-- 狗叫聲 -->
+    <audio id="poopSound" src="https://cdn.pixabay.com/audio/2022/03/24/03-23-03-513_1.mp3"></audio> <!-- 放屁聲 -->
+    <audio id="gameOverSound" src="https://www.soundjay.com/buttons/beep-02.mp3"></audio>
+
     <script>
         const dog = document.getElementById('dog');
         const gameContainer = document.querySelector('.game-container');
         const scoreDisplay = document.getElementById('score');
         const rageMeter = document.getElementById('rage-meter');
         const poopCount = document.getElementById('poop-count');
+        const shootBtn = document.getElementById('shoot-btn');
         const introScreen = document.getElementById('intro-screen');
         const modeSelection = document.getElementById('mode-selection');
+        const jumpSound = document.getElementById('jumpSound');
+        const poopSound = document.getElementById('poopSound');
+        const gameOverSound = document.getElementById('gameOverSound');
         let score = 0;
         let rage = 0;
         let poops = 3;
@@ -356,6 +420,7 @@
                 isJumping = true;
                 canJump = false;
                 dog.classList.add('jump');
+                jumpSound.play();
                 setTimeout(() => {
                     dog.classList.remove('jump');
                     isJumping = false;
@@ -368,13 +433,14 @@
             if (gameStarted && (gameMode === 'shooting' || gameMode === 'rage') && poops > 0) {
                 poops--;
                 poopCount.textContent = `大便: ${poops}`;
+                poopSound.play();
                 const poop = document.createElement('div');
                 poop.className = 'poop';
                 gameContainer.appendChild(poop);
 
                 const poopInterval = setInterval(() => {
                     const poopRect = poop.getBoundingClientRect();
-                    document.querySelectorAll('.cactus, .big-cactus').forEach(cactus => {
+                    document.querySelectorAll('.cactus, .big-cactus, .spiky-cactus').forEach(cactus => {
                         const cactusRect = cactus.getBoundingClientRect();
                         if (
                             poopRect.right > cactusRect.left &&
@@ -410,9 +476,11 @@
             }
             if (gameMode === 'shooting' || gameMode === 'rage') {
                 poopCount.style.display = 'block';
+                shootBtn.style.display = 'block';
                 poopCount.textContent = `大便: ${poops}`;
             } else {
                 poopCount.style.display = 'none';
+                shootBtn.style.display = 'none';
             }
         }
 
@@ -429,11 +497,21 @@
             }, 5000);
         }
 
-        // 生成仙人掌
+        // 生成仙人掌（含射擊型）
         function spawnCactus() {
-            const isBig = Math.random() < 0.2;
-            const cactus = document.createElement('div');
-            cactus.className = isBig ? 'big-cactus' : 'cactus';
+            const rand = Math.random();
+            let cactus;
+            if (rand < 0.3) {
+                cactus = document.createElement('div');
+                cactus.className = 'cactus';
+            } else if (rand < 0.6) {
+                cactus = document.createElement('div');
+                cactus.className = 'big-cactus';
+            } else {
+                cactus = document.createElement('div');
+                cactus.className = 'spiky-cactus';
+                spawnCactusBullet(cactus);
+            }
             cactus.style.animationDuration = `${baseSpeed / speedBoost}s`;
             gameContainer.appendChild(cactus);
 
@@ -463,6 +541,37 @@
                     clearInterval(checkCollision);
                 }
             }, 10);
+        }
+
+        // 生成仙人掌子彈
+        function spawnCactusBullet(cactus) {
+            const bullet = document.createElement('div');
+            bullet.className = 'cactus-bullet';
+            bullet.style.left = `${cactus.getBoundingClientRect().left}px`;
+            gameContainer.appendChild(bullet);
+
+            const bulletInterval = setInterval(() => {
+                const dogRect = dog.getBoundingClientRect();
+                const bulletRect = bullet.getBoundingClientRect();
+
+                if (
+                    dogRect.right > bulletRect.left &&
+                    dogRect.left < bulletRect.right &&
+                    dogRect.bottom > bulletRect.top &&
+                    dogRect.top < bulletRect.bottom &&
+                    !isRaging
+                ) {
+                    gameOver();
+                    clearInterval(bulletInterval);
+                }
+
+                if (bulletRect.right < 0) {
+                    bullet.remove();
+                    clearInterval(bulletInterval);
+                }
+            }, 10);
+
+            setTimeout(() => bullet.remove(), 1500);
         }
 
         // 隨機事件
@@ -528,7 +637,7 @@
             if (score >= 1000) baseSpeed = 1.2;
             else if (score >= 500) baseSpeed = 1.6;
             else baseSpeed = 2 - (score / 2000);
-            document.querySelectorAll('.cactus, .big-cactus, .speed-up, .extra-poop').forEach(el => {
+            document.querySelectorAll('.cactus, .big-cactus, .spiky-cactus, .speed-up, .extra-poop').forEach(el => {
                 el.style.animationDuration = `${baseSpeed / speedBoost}s`;
             });
         }
@@ -564,12 +673,13 @@
             clearInterval(scoreInterval);
             clearInterval(eventInterval);
             clearInterval(cloudInterval);
+            gameOverSound.play();
             alert(`遊戲結束！你的分數是: ${score}`);
             dog.classList.remove('walking');
             poops = 3;
             updateScoreAndRage();
             introScreen.style.display = 'flex';
-            document.querySelectorAll('.cactus, .big-cactus, .poop, .speed-up, .extra-poop, .cloud').forEach(el => el.remove());
+            document.querySelectorAll('.cactus, .big-cactus, .spiky-cactus, .poop, .speed-up, .extra-poop, .cloud, .cactus-bullet').forEach(el => el.remove());
         }
 
         // 事件監聽
@@ -589,7 +699,7 @@
 
         gameContainer.addEventListener('touchend', (e) => {
             e.preventDefault();
-            throwPoop();
+            if (e.target !== shootBtn) throwPoop(); // 避免觸控按鈕時重複觸發
         }, { passive: false });
     </script>
 </body>
