@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>戰鬥雞：無盡征途 (音效強化版)</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #1a2533; /* 更深的藍灰 */
+            font-family: 'Courier New', Courier, monospace;
+            color: white;
+            overflow: hidden; /* 避免頁面滾動條 */
+        }
+        canvas {
+            border: 2px solid #fff;
+            background-color: #87CEEB;
+            image-rendering: pixelated;
+        }
+        #gameUI {
+            margin-top: 10px;
+            font-size: 18px;
+            display: flex;
+            justify-content: space-around;
+            width: 800px;
+            flex-wrap: wrap;
+        }
+        #gameUI span {
+            margin: 2px 10px;
+        }
+        #controlsInfo {
+            margin-top: 10px;
+            font-size: 14px;
+            text-align: center;
+        }
+        .button {
+            padding: 10px 20px;
+            font-size: 18px;
+            color: white;
+            background-color: #27ae60;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .button:hover {
+            background-color: #229954;
+        }
+    </style>
+</head>
+<body>
+    <h1>戰鬥雞：無盡征途</h1>
+    <div id="gameUI">
+        <span id="score">分數: 0</span>
+        <span id="stage">大關卡: 1</span>
+        <span id="progress">進度: 0m</span>
+        <span id="health">生命: 100</span>
+        <span id="weapon">武器: 小雞啄米槍</span>
+        <span id="skillStatus">技能: 就緒! (S)</span>
+    </div>
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+    <div id="controlsInfo">
+        ← →/A D: 移動 | ↑/W: 跳躍 | 空白鍵: 射擊 | S: 技能 | Q/E: 切換武器
+    </div>
+    <button id="startButton" class="button">開始遊戲</button>
+    <div id="messageDisplay" style="font-size: 22px; margin-top: 8px; color: #e67e22;"></div>
+
+    <script>
+        // --- 基本設定 ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('score');
+        const stageDisplay = document.getElementById('stage');
+        const progressDisplay = document.getElementById('progress');
+        const healthDisplay = document.getElementById('health');
+        const weaponDisplay = document.getElementById('weapon');
+        const skillStatusDisplay = document.getElementById('skillStatus');
+        const startButton = document.getElementById('startButton');
+        const messageDisplay = document.getElementById('messageDisplay');
+
+        // --- 遊戲狀態 ---
+        let score = 0;
+        let currentMajorStage = 1;
+        const MAX_STAGES = 5;
+        let playerHealth = 100;
+        let gameRunning = false;
+        let gameOver = false;
+        let gameWon = false;
+        let cameraX = 0;
+        let worldGeneratedUpToX = 0;
+
+        // --- 物理與玩家常數 ---
+        const GRAVITY = 0.6;
+        const JUMP_FORCE = -13;
+        const PLAYER_WIDTH = 40;
+        const PLAYER_HEIGHT = 40;
+        const PLAYER_SPEED = 3.5; // <--- 玩家速度已調整
+        const ENEMY_BULLET_MAX_RANGE = canvas.width * 0.7; // <--- 小怪子彈最大射程
+
+        // --- Web Audio API 音效設定 ---
+        let audioCtx;
+        let masterGainNode;
+        try {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx) {
+                masterGainNode = audioCtx.createGain();
+                masterGainNode.gain.setValueAtTime(0.25, audioCtx.currentTime); // 主音量 (0.0 to 1.0)
+                masterGainNode.connect(audioCtx.destination);
+            }
+        } catch (e) {
+            console.warn("Web Audio API is not supported in this browser.");
+            audioCtx = null;
+        }
+
+        function playSound(type, options = {}) {
+            if (!audioCtx || !masterGainNode) return;
+
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(masterGainNode);
+
+            let freq1 = 220, freq2 = 440, duration = 0.1, vol = 0.5;
+            oscillator.type = 'triangle';
+
+            switch (type) {
+                case 'player_shoot':
+                    oscillator.type = 'square';
+                    const currentWeaponKeyShoot = player.weapons[player.currentWeaponIndex];
+                    freq1 = WEAPON_TYPES[currentWeaponKeyShoot].name === '爆蛋發射器' ? 280 :
+                            WEAPON_TYPES[currentWeaponKeyShoot].name === '羽毛散射砲' ? 520 : 440;
+                    duration = 0.08;
+                    vol = 0.15; // 射擊音效調小
+                    oscillator.frequency.setValueAtTime(freq1, audioCtx.currentTime);
+                    gainNode.gain.setValueAtTime(vol, audioCtx.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
+                    break;
+                case 'enemy_die':
+                    oscillator.type = 'sawtooth';
+                    freq1 = 150; freq2 = 50; duration = 0.15; vol = 0.1; //死亡音效調小
+                    oscillator.frequency.setValueAtTime(freq1, audioCtx.currentTime);
+                    oscillator.frequency.exponentialRampToValueAtTime(freq2, audioCtx.currentTime + duration);
+                    gainNode.gain.setValueAtTime(vol, audioCtx.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
+                    break;
+                case 'player_jump':
+                    oscillator.type = 'sine';
+                    freq1 = 261; freq2 = 523; duration = 0.12; vol = 0.2;
+                    oscillator.frequency.setValueAtTime(freq1, audioCtx.currentTime);
+                    oscillator.frequency.exponentialRampToValueAtTime(freq2, audioCtx.currentTime + duration * 0.8);
+                    gainNode.gain.setValueAtTime(vol, audioCtx.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
+                    break;
+                case 'pickup_weapon': //武器或重要道具
+                    oscillator.type = 'sine';
+                    freq1 = 523; freq2 = 783; duration = 0.3; vol = 0.25;
+                    oscillator.frequency.setValueAtTime(freq1, audioCtx.currentTime);
+                    gainNode.gain.setValueAtTime(vol, audioCtx.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
+                    const osc2_w = audioCtx.createOscillator(); const gain2_w = audioCtx.createGain();
+                    osc2_w.connect(gain2_w); gain2_w.connect(masterGainNode); osc2_w.type = 'sine';
+                    osc2_w.frequency.setValueAtTime(freq2, audioCtx.currentTime + 0.05);
+                    gain2_w.gain.setValueAtTime(vol * 0.8, audioCtx.currentTime + 0.05);
+                    gain2_w.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration + 0.05);
+                    osc2_w.start(audioCtx.currentTime + 0.05); osc2_w.stop(audioCtx.currentTime + duration + 0.05);
+                    break;
+                case 'pickup_health': //拾取血包
+                     oscillator.type = 'triangle';
+                     freq1 = 440; freq2 = 660; duration = 0.2; vol = 0.2;
+                     oscillator.frequency.setValueAtTime(freq1, audioCtx.currentTime);
+                     oscillator.frequency.exponentialRampToValueAtTime(freq2, audioCtx.currentTime + duration * 0.7);
+                     gainNode.gain.setValueAtTime(vol, audioCtx.currentTime);
+                     gainNode.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
+                     break;
+                case 'skill_use':
+                    oscillator.type = 'noise'; duration = 0.5; vol = 0.3;
+                    const bqFilter = audioCtx.createBiquadFilter();
+                    bqFilter.type = "bandpass"; bqFilter.frequency.setValueAtTime(800, audioCtx.currentTime);
+                    bqFilter.Q.setValueAtTime(5, audioCtx.currentTime); oscillator.connect(bqFilter);
+                    bqFilter.connect(gainNode); gainNode.gain.setValueAtTime(vol, audioCtx.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
+                    break;
+                case 'player_hit':
+                    oscillator.type = 'triangle';
+                    freq1 = 200; freq2 = 100; duration = 0.2; vol = options.volume !== undefined ? options.volume : 0.3;
+                    oscillator.frequency.setValueAtTime(freq1, audioCtx.currentTime);
+                    oscillator.frequency.exponentialRampToValueAtTime(freq2, audioCtx.currentTime + duration);
+                    gainNode.gain.setValueAtTime(vol, audioCtx.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
+                    break;
+                case 'boss_hit':
+                    oscillator.type = 'square';
+                    freq1 = 100; duration = 0.1; vol = 0.2;
+                    oscillator.frequency.setValueAtTime(freq1, audioCtx.currentTime);
+                    gainNode.gain.setValueAtTime(vol, audioCtx.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
+                    break;
+                case 'boss_die':
+                    oscillator.type = 'sawtooth';
+                    freq1 = 250; freq2 = 30; duration = 1.0; vol = 0.4; // 更長更戲劇化
+                    oscillator.frequency.setValueAtTime(freq1, audioCtx.currentTime);
+                    oscillator.frequency.exponentialRampToValueAtTime(freq2, audioCtx.currentTime + duration);
+                    gainNode.gain.setValueAtTime(vol, audioCtx.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
+                    // 加上一點雜訊增加爆炸感
+                    const noiseOsc = audioCtx.createOscillator(); noiseOsc.type = 'noise';
+                    const noiseGain = audioCtx.createGain(); noiseOsc.connect(noiseGain); noiseGain.connect(masterGainNode);
+                    noiseGain.gain.setValueAtTime(vol * 0.5, audioCtx.currentTime);
+                    noiseGain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration * 0.8);
+                    noiseOsc.start(audioCtx.currentTime); noiseOsc.stop(audioCtx.currentTime + duration * 0.8);
+                    break;
+
+            }
+            oscillator.start(audioCtx.currentTime);
+            oscillator.stop(audioCtx.currentTime + duration + 0.01);
+        }
+
+
+        // --- 武器系統 ---
+        const WEAPON_TYPES = { /* ... (與前版相同，此處省略以節省空間) ... */
+            'peck_cannon': { name: '小雞啄米槍', fireRate: 300, bulletSpeed: 8, bulletRadius: 5, bulletColor: '#FFFF00', damage: 10, pattern: 'single', ammo: Infinity },
+            'feather_spread': { name: '羽毛散射砲', fireRate: 600, bulletSpeed: 7, bulletRadius: 4, bulletColor: '#ADD8E6', damage: 7, pattern: 'triple_spread', ammo: 50, maxAmmo: 50 },
+            'egg_launcher': { name: '爆蛋發射器', fireRate: 1000, bulletSpeed: 6, bulletRadius: 8, bulletColor: '#FFA07A', damage: 25, pattern: 'single_big', ammo: 20, maxAmmo: 20 }
+        };
+
+        // --- 技能與魔王相關 ---
+        const SKILL_COOLDOWN = 12000;
+        let skillReady = true; let lastSkillTime = 0;
+        const BOSS_SPAWN_INTERVAL = 2500;
+        let bossActive = false; let activeBoss = null;
+        let nextBossSpawnX = BOSS_SPAWN_INTERVAL;
+
+        // --- 玩家物件 ---
+        const player = {
+            worldX: 100, worldY: canvas.height - PLAYER_HEIGHT - 100,
+            width: PLAYER_WIDTH, height: PLAYER_HEIGHT,
+            dx: 0, dy: 0, grounded: false, facingRight: true,
+            color: '#FFD700', bullets: [],
+            weapons: ['peck_cannon'], // 初始只有一把武器
+            currentWeaponIndex: 0,
+            lastShotTime: 0,
+            P_feather_spread_ammo: 0, // 各武器彈藥分開記錄
+            P_egg_launcher_ammo: 0,
+            invincible: false, // 短暫無敵狀態
+            invincibleTimer: 0,
+
+            shoot: function() {
+                const now = Date.now();
+                const currentWeaponKey = this.weapons[this.currentWeaponIndex];
+                const weaponStats = WEAPON_TYPES[currentWeaponKey];
+
+                if (now - this.lastShotTime < weaponStats.fireRate) return;
+
+                let currentAmmoForWeapon = Infinity;
+                if (currentWeaponKey === 'feather_spread') currentAmmoForWeapon = this.P_feather_spread_ammo;
+                else if (currentWeaponKey === 'egg_launcher') currentAmmoForWeapon = this.P_egg_launcher_ammo;
+
+                if (weaponStats.ammo !== Infinity && currentAmmoForWeapon <= 0) {
+                    messageDisplay.textContent = `${weaponStats.name} 沒子彈了!`;
+                    setTimeout(()=> messageDisplay.textContent = "", 1500);
+                    playSound('player_shoot', {freq1: 100, duration: 0.2}); // 空槍音效
+                    return;
+                }
+
+                this.lastShotTime = now;
+                playSound('player_shoot');
+                const bulletY = this.worldY + this.height / 2 - weaponStats.bulletRadius;
+                const bulletXOffset = this.facingRight ? this.width : 0;
+
+                if (weaponStats.pattern === 'single' || weaponStats.pattern === 'single_big') {
+                    this.bullets.push({
+                        worldX: this.worldX + bulletXOffset, worldY: bulletY,
+                        radius: weaponStats.bulletRadius, color: weaponStats.bulletColor,
+                        speedX: (this.facingRight ? 1 : -1) * weaponStats.bulletSpeed, speedY: 0,
+                        damage: weaponStats.damage
+                    });
+                } else if (weaponStats.pattern === 'triple_spread') {
+                    const angles = [-0.2, 0, 0.2];
+                    angles.forEach(angle => {
+                        this.bullets.push({
+                            worldX: this.worldX + bulletXOffset, worldY: bulletY,
+                            radius: weaponStats.bulletRadius, color: weaponStats.bulletColor,
+                            speedX: Math.cos(angle) * (this.facingRight ? 1 : -1) * weaponStats.bulletSpeed,
+                            speedY: Math.sin(angle) * weaponStats.bulletSpeed,
+                            damage: weaponStats.damage
+                        });
+                    });
+                }
+                if (weaponStats.ammo !== Infinity) {
+                    if (currentWeaponKey === 'feather_spread') this.P_feather_spread_ammo--;
+                    else if (currentWeaponKey === 'egg_launcher') this.P_egg_launcher_ammo--;
+                }
+                this.updateWeaponUI();
+            },
+            useSkill: function() {
+                if (gameRunning && !gameOver && skillReady) {
+                    skillReady = false; lastSkillTime = Date.now();
+                    skillStatusDisplay.textContent = "技能: 冷卻中...";
+                    playSound('skill_use');
+                    const angles = [-0.5, -0.25, 0, 0.25, 0.5];
+                    angles.forEach(angle => {
+                        for (let i = 0; i < 3; i++) {
+                             setTimeout(() => {
+                                this.bullets.push({
+                                    worldX: this.worldX + this.width / 2, worldY: this.worldY + this.height / 2,
+                                    radius: WEAPON_TYPES['peck_cannon'].bulletRadius + 2,
+                                    speedX: Math.sin(angle) * (WEAPON_TYPES['peck_cannon'].bulletSpeed +2),
+                                    speedY: -Math.cos(angle) * (WEAPON_TYPES['peck_cannon'].bulletSpeed+2),
+                                    color: '#FFA500', isSkillBullet: true, damage: 20 });
+                            }, i * 100);
+                        }
+                    });
+                    setTimeout(() => { skillReady = true; skillStatusDisplay.textContent = "技能: 就緒! (S)"; }, SKILL_COOLDOWN);
+                }
+            },
+            switchWeapon: function() {
+                this.currentWeaponIndex = (this.currentWeaponIndex + 1) % this.weapons.length;
+                this.updateWeaponUI();
+            },
+            updateWeaponUI: function() {
+                const currentWeaponKey = this.weapons[this.currentWeaponIndex];
+                const weaponStats = WEAPON_TYPES[currentWeaponKey];
+                let ammoText = "";
+                if (weaponStats.ammo !== Infinity) {
+                    let currentAmmoForDisplay = 0;
+                    if (currentWeaponKey === 'feather_spread') currentAmmoForDisplay = this.P_feather_spread_ammo;
+                    else if (currentWeaponKey === 'egg_launcher') currentAmmoForDisplay = this.P_egg_launcher_ammo;
+                    ammoText = ` (${currentAmmoForDisplay}/${weaponStats.maxAmmo})`;
+                }
+                 weaponDisplay.textContent = `武器: ${weaponStats.name}${ammoText}`;
+            },
+            addWeapon: function(weaponKey) {
+                if (!this.weapons.includes(weaponKey)) {
+                    this.weapons.push(weaponKey);
+                    if (WEAPON_TYPES[weaponKey].ammo !== Infinity) {
+                        if(weaponKey === 'feather_spread') this.P_feather_spread_ammo = WEAPON_TYPES[weaponKey].maxAmmo;
+                        else if(weaponKey === 'egg_launcher') this.P_egg_launcher_ammo = WEAPON_TYPES[weaponKey].maxAmmo;
+                    }
+                    messageDisplay.textContent = `獲得新武器: ${WEAPON_TYPES[weaponKey].name}!`;
+                    playSound('pickup_weapon');
+                } else {
+                     if (WEAPON_TYPES[weaponKey].ammo !== Infinity) {
+                        if(weaponKey === 'feather_spread') this.P_feather_spread_ammo = WEAPON_TYPES[weaponKey].maxAmmo;
+                        else if(weaponKey === 'egg_launcher') this.P_egg_launcher_ammo = WEAPON_TYPES[weaponKey].maxAmmo;
+                        messageDisplay.textContent = `${WEAPON_TYPES[weaponKey].name} 彈藥已補充!`;
+                        playSound('pickup_health'); // 彈藥補充用類似血包的聲音
+                     }
+                }
+                setTimeout(()=> messageDisplay.textContent = "", 2000);
+                this.updateWeaponUI();
+            },
+            jump: function() {
+                if (this.grounded && gameRunning && !gameOver) {
+                    this.dy = JUMP_FORCE; this.grounded = false;
+                    playSound('player_jump');
+                }
+            },
+            draw: function() { /* 與前版雞的造型相同，此處省略 */
+                const screenX = this.worldX - cameraX;
+                // 繪製無敵閃爍效果
+                if (this.invincible && Math.floor(Date.now() / 100) % 2 === 0) {
+                    // 透明或不繪製
+                } else {
+                    ctx.fillStyle = this.color;
+                    ctx.fillRect(screenX + 5, this.worldY + 5, this.width - 10, this.height - 10);
+                    ctx.fillStyle = 'red';
+                    ctx.fillRect(screenX + this.width / 2 - 6, this.worldY - 2, 12, 6);
+                    ctx.fillStyle = 'white';
+                    const eyeX = this.facingRight ? screenX + this.width * 0.65 : screenX + this.width * 0.15;
+                    ctx.fillRect(eyeX, this.worldY + this.height * 0.25, 8, 8);
+                    ctx.fillStyle = 'black';
+                    ctx.fillRect(eyeX + 2, this.worldY + this.height * 0.25 + 2, 4, 4);
+                    ctx.fillStyle = '#FFA500';
+                    const beakTipX = this.facingRight ? screenX + this.width + 8 : screenX - 8;
+                    const beakBaseX = this.facingRight ? screenX + this.width - 5 : screenX + 5;
+                    ctx.beginPath(); ctx.moveTo(beakBaseX, this.worldY + this.height * 0.45);
+                    ctx.lineTo(beakTipX, this.worldY + this.height * 0.55);
+                    ctx.lineTo(beakBaseX, this.worldY + this.height * 0.65); ctx.closePath(); ctx.fill();
+                    ctx.fillStyle = '#DAA520';
+                    ctx.fillRect(screenX + this.width * 0.2, this.worldY + this.height * 0.4, this.width * 0.6, 8);
+                    ctx.fillStyle = '#FFA500';
+                    const legY = this.worldY + this.height - 5;
+                    ctx.fillRect(screenX + this.width * 0.3 - 2, legY, 4, 10);
+                    ctx.fillRect(screenX + this.width * 0.7 - 2, legY, 4, 10);
+                }
+
+                this.bullets.forEach(bullet => { /* ...子彈繪製不變... */
+                    ctx.beginPath();
+                    ctx.arc(bullet.worldX - cameraX, bullet.worldY, bullet.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = bullet.color;
+                    ctx.fill();
+                    ctx.closePath();
+                });
+            },
+            update: function() { /* 與前版類似，加入無敵計時器 */
+                if (this.invincibleTimer > 0) {
+                    this.invincibleTimer -= 1000/60; // 假設 60fps
+                    if (this.invincibleTimer <= 0) {
+                        this.invincible = false;
+                    }
+                }
+
+                this.worldX += this.dx;
+                if (this.dx > 0) this.facingRight = true; if (this.dx < 0) this.facingRight = false;
+                this.worldY += this.dy; this.dy += GRAVITY; this.grounded = false;
+                platforms.forEach(p => {
+                    if (this.worldX + this.width > p.worldX && this.worldX < p.worldX + p.width &&
+                        this.worldY + this.height >= p.worldY && this.worldY + this.height - (this.dy > 0 ? this.dy : 0) <= p.worldY +1) {
+                        this.worldY = p.worldY - this.height; this.dy = 0; this.grounded = true;
+                    }
+                });
+                if (this.worldY + this.height > canvas.height + PLAYER_HEIGHT) { playerHealth = 0; gameOver = true; }
+                if (this.worldX < cameraX && !bossActive) this.worldX = cameraX; // 魔王戰時允許稍微移出左邊界
+                if (this.worldX < 0) this.worldX = 0;
+                this.bullets.forEach((bullet, index) => { /* ...子彈更新不變... */
+                    bullet.worldX += bullet.speedX; bullet.worldY += bullet.speedY;
+                    if (bullet.worldX < cameraX - 50 || bullet.worldX > cameraX + canvas.width + 50 || bullet.worldY < -50 || bullet.worldY > canvas.height + 50) {
+                        this.bullets.splice(index, 1);
+                    }
+                });
+            }
+        };
+
+        // --- 敵人建構函式與原型方法 ---
+        function Enemy(worldX, worldY, width, height, color, health, type, shootInterval = 2000, movePattern = 'static', damage = 6) { /* ...建構函式與前版相同... */
+            this.worldX = worldX; this.worldY = worldY; this.width = width; this.height = height;
+            this.color = color; this.health = health; this.maxHealth = health; this.type = type;
+            this.bullets = []; this.lastShotTime = 0; this.shootInterval = shootInterval;
+            this.speedX = (movePattern === 'patrol' ? (Math.random() > 0.5 ? 1 : -1) * 1.2 : 0);
+            this.originalX = worldX; this.patrolRange = 50 + Math.random()*50;
+            this.movePattern = movePattern; this.contactDamage = damage; this.isBoss = type.includes('boss');
+        }
+
+        Enemy.prototype.draw = function() { /* 與前版相同，此處省略 */
+            const screenX = this.worldX - cameraX;
+            if (screenX + this.width < 0 || screenX > canvas.width) return;
+            ctx.fillStyle = this.color;
+            ctx.fillRect(screenX, this.worldY, this.width, this.height);
+            if (this.isBoss) {
+                ctx.fillStyle = 'red'; ctx.fillRect(screenX, this.worldY - 15, this.width, 8);
+                ctx.fillStyle = 'green'; ctx.fillRect(screenX, this.worldY - 15, (this.health / this.maxHealth) * this.width, 8);
+            } else { /* ...小怪眼睛... */
+                ctx.fillStyle = 'white'; ctx.fillRect(screenX + this.width * 0.2, this.worldY + this.height * 0.2, 5, 5);
+                ctx.fillRect(screenX + this.width * 0.6, this.worldY + this.height * 0.2, 5, 5);
+                ctx.fillStyle = 'black'; ctx.fillRect(screenX + this.width * 0.2 + 1, this.worldY + this.height * 0.2 + 1, 3, 3);
+                ctx.fillRect(screenX + this.width * 0.6 + 1, this.worldY + this.height * 0.2 + 1, 3, 3);
+            }
+            this.bullets.forEach(bullet => { /* ...子彈繪製不變... */
+                ctx.beginPath();
+                ctx.arc(bullet.worldX - cameraX, bullet.worldY, bullet.radius, 0, Math.PI * 2);
+                ctx.fillStyle = bullet.color; ctx.fill(); ctx.closePath();
+            });
+        };
+
+        Enemy.prototype.update = function() { // <--- 已包含子彈射程限制
+            const screenX = this.worldX - cameraX;
+            if (!this.isBoss && (screenX + this.width < -200 || screenX > canvas.width + 200) ) return;
+
+            if (this.movePattern === 'patrol') { /* ...巡邏邏輯... */
+                this.worldX += this.speedX;
+                if (this.worldX > this.originalX + this.patrolRange || this.worldX < this.originalX - this.patrolRange) { this.speedX *= -1; }
+            }
+            if (this.isBoss && this.type === 'boss_veg_king') { /* ...魔王移動... */
+                 if(Math.random() < 0.01) { this.worldY -= Math.random() * 20 - 10; /* ...邊界限制... */ }
+            }
+
+            const now = Date.now();
+            if ((this.isBoss || (player.worldX > this.worldX - canvas.width / 1.5 && player.worldX < this.worldX + canvas.width / 1.5)) &&
+                now - this.lastShotTime > this.shootInterval) {
+                this.lastShotTime = now;
+                const bulletColor = this.isBoss ? '#FF00FF' : (this.type === 'cabbage' ? '#90EE90' : '#FF6347');
+                const bulletRadius = this.isBoss ? 8 : 4;
+                const bulletSpeed = this.isBoss ? 5 : 4;
+                const bulletDamage = this.isBoss ? (20 + currentMajorStage * 2) : 5;
+                const bulletStartX = this.worldX + this.width / 2; const bulletStartY = this.worldY + this.height / 2;
+
+                if (this.isBoss && Math.random() < 0.3) { /* ...魔王散射... */
+                    for(let i = -1; i <= 1; i++) {
+                         this.bullets.push({
+                            worldX: bulletStartX, worldY: bulletStartY, radius: bulletRadius,
+                            speedX: Math.cos(i*0.3) * bulletSpeed, speedY: Math.sin(i*0.3) * bulletSpeed + (player.worldY - bulletStartY > 0 ? 1 : -1) * bulletSpeed *0.5,
+                            color: bulletColor, damage: bulletDamage,
+                            creationX: bulletStartX, creationY: bulletStartY, maxRange: ENEMY_BULLET_MAX_RANGE * 1.5 });
+                    }
+                } else { /* ...普通射擊... */
+                    const angle = Math.atan2((player.worldY + player.height/2) - bulletStartY, (player.worldX + player.width/2) - bulletStartX);
+                    this.bullets.push({
+                        worldX: bulletStartX, worldY: bulletStartY, radius: bulletRadius,
+                        speedX: Math.cos(angle) * bulletSpeed, speedY: Math.sin(angle) * bulletSpeed,
+                        color: bulletColor, damage: bulletDamage,
+                        creationX: bulletStartX, creationY: bulletStartY, maxRange: ENEMY_BULLET_MAX_RANGE });
+                }
+            }
+            this.bullets.forEach((bullet, index) => { // 子彈更新與射程檢查
+                bullet.worldX += bullet.speedX; bullet.worldY += bullet.speedY;
+                const distanceTraveled = Math.sqrt(Math.pow(bullet.worldX - bullet.creationX, 2) + Math.pow(bullet.worldY - bullet.creationY, 2));
+                if (distanceTraveled > bullet.maxRange ||
+                    bullet.worldX < cameraX - 50 || bullet.worldX > cameraX + canvas.width + 50 ||
+                    bullet.worldY < -50 || bullet.worldY > canvas.height + 50) {
+                    this.bullets.splice(index, 1);
+                }
+            });
+        };
+
+        let enemies = []; let collectibles = []; let platforms = [];
+        // --- 地圖生成與平台/收集品建構函式 ---
+        const MIN_PLATFORM_Y = canvas.height - 50; const MAX_PLATFORM_Y = 150;
+        const PLATFORM_MIN_WIDTH = 80; const PLATFORM_MAX_WIDTH = 250;
+        const PLATFORM_MIN_GAP_X = 50; const PLATFORM_MAX_GAP_X = 150;
+        const PLATFORM_MIN_GAP_Y = 20; const PLATFORM_MAX_GAP_Y = 100;
+
+        function Platform(worldX, worldY, width, height, color = '#A0522D') { /* ...與前版相同... */
+            this.worldX = worldX; this.worldY = worldY; this.width = width; this.height = height; this.color = color;
+            this.draw = function() {
+                const screenX = this.worldX - cameraX;
+                if (screenX + this.width < 0 || screenX > canvas.width) return;
+                ctx.fillStyle = this.color; ctx.fillRect(screenX, this.worldY, this.width, this.height);
+            };
+        }
+        function Collectible(worldX, worldY, type, value) { /* ...與前版相同... */
+            this.worldX = worldX; this.worldY = worldY; this.type = type; this.value = value;
+            this.width = 20; this.height = 20; this.collected = false;
+            this.draw = function() {
+                if (this.collected) return;
+                const screenX = this.worldX - cameraX;
+                if (screenX + this.width < 0 || screenX > canvas.width) return;
+                ctx.fillStyle = this.type === 'weapon' ? '#00FFFF' : (this.type === 'health' ? '#FF69B4' : '#FFFF00'); // 血包用粉紅色
+                ctx.fillRect(screenX, this.worldY, this.width, this.height);
+                if (this.type === 'weapon') {
+                    ctx.fillStyle = 'black'; ctx.font = '15px Courier New';
+                    ctx.fillText(WEAPON_TYPES[this.value] ? WEAPON_TYPES[this.value].name[0] : 'W' , screenX + 5, this.worldY + 15); // 顯示武器首字母
+                } else if (this.type === 'health') {
+                    ctx.fillStyle = 'white'; ctx.font = '15px Courier New';
+                    ctx.fillText('H' , screenX + 5, this.worldY + 15);
+                }
+            }
+        }
+
+        function generateSegment(startX) { // <--- 小怪生命值設為1
+            let currentX = startX; const endX = startX + canvas.width * 1.5;
+            let lastPlatformY = canvas.height - 80 - Math.random() * 100;
+            if (startX === 0) {
+                platforms.push(new Platform(0, canvas.height - 60, 300, 60, '#006400'));
+                currentX = 300 + PLATFORM_MIN_GAP_X; lastPlatformY = canvas.height - 60;
+                collectibles.push(new Collectible(150, canvas.height - 90, 'weapon', 'feather_spread')); // 起始送一把武器
+                collectibles.push(new Collectible(200, canvas.height - 90, 'health', 20)); // 起始送一點血
+            }
+            while (currentX < endX) { /* ...平台生成邏輯不變... */
+                const gapX = PLATFORM_MIN_GAP_X + Math.random() * (PLATFORM_MAX_GAP_X - PLATFORM_MIN_GAP_X); currentX += gapX;
+                let newPlatformY = lastPlatformY + (Math.random() * 2 - 1) * PLATFORM_MAX_GAP_Y;
+                newPlatformY = Math.max(MAX_PLATFORM_Y, Math.min(MIN_PLATFORM_Y, newPlatformY));
+                const platformWidth = PLATFORM_MIN_WIDTH + Math.random() * (PLATFORM_MAX_WIDTH - PLATFORM_MIN_WIDTH);
+                const platformHeight = 20 + Math.random() * 20;
+                const platformColor = `rgb(${Math.random()*100 + 50}, ${Math.random()*100 + 100}, ${Math.random()*50 + 30})`;
+                platforms.push(new Platform(currentX, newPlatformY, platformWidth, platformHeight, platformColor));
+
+                if (!bossActive && Math.random() < 0.35) { // 稍微降低小怪生成率
+                    const enemyType = Math.random() < 0.6 ? 'tomato' : 'cabbage';
+                    const enemyColor = enemyType === 'tomato' ? '#FF6347' : '#32CD32';
+                    enemies.push(new Enemy(currentX + platformWidth / 2 - 12, newPlatformY - 25, 25, 25, enemyColor, 1, enemyType, 2800 - currentMajorStage * 100, 'patrol')); // 生命為1
+                }
+                if (!bossActive && Math.random() < 0.04) {
+                    const weaponKeys = ['feather_spread', 'egg_launcher'];
+                    const randomWeaponKey = weaponKeys[Math.floor(Math.random() * weaponKeys.length)];
+                    collectibles.push(new Collectible(currentX + platformWidth / 2, newPlatformY - 30, 'weapon', randomWeaponKey));
+                } else if (!bossActive && Math.random() < 0.03) {
+                     collectibles.push(new Collectible(currentX + platformWidth / 2, newPlatformY - 30, 'health', 20));
+                }
+                lastPlatformY = newPlatformY; currentX += platformWidth;
+            }
+            worldGeneratedUpToX = Math.max(worldGeneratedUpToX, endX);
+        }
+
+        function manageLevelGeneration() { /* ...與前版相同... */
+            if (bossActive) return;
+            if (cameraX + canvas.width * 1.2 > worldGeneratedUpToX) { generateSegment(worldGeneratedUpToX); }
+            platforms = platforms.filter(p => p.worldX + p.width > cameraX - canvas.width);
+            enemies = enemies.filter(e => e.worldX + e.width > cameraX - canvas.width || e.isBoss);
+            collectibles = collectibles.filter(c => c.worldX + c.width > cameraX - canvas.width);
+        }
+
+        // --- 按鍵/輸入處理 ---
+        const keys = {}; /* ...與前版相同... */
+        document.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+            if (!gameRunning && (e.code === 'Enter' || e.code === 'Space')) { startButton.click(); return; }
+            if (!gameRunning || gameOver) return;
+            if (e.code === 'Space') player.shoot(); if (e.code === 'KeyS') player.useSkill();
+            if (e.code === 'ArrowUp' || e.code === 'KeyW') player.jump();
+            if (e.code === 'KeyQ' || e.code === 'KeyE') player.switchWeapon();
+        });
+        document.addEventListener('keyup', (e) => { keys[e.code] = false; });
+        function handleInput() { /* ...與前版相同... */
+            if (!gameRunning || gameOver) return; player.dx = 0;
+            if (keys['ArrowLeft'] || keys['KeyA']) player.dx = -PLAYER_SPEED;
+            if (keys['ArrowRight'] || keys['KeyD']) player.dx = PLAYER_SPEED;
+        }
+
+        // --- 鏡頭更新 ---
+        function updateCamera() { /* ...與前版相同... */
+            const targetCamX = player.worldX - canvas.width / 3;
+            if (!bossActive) { cameraX += (targetCamX - cameraX) * 0.1; }
+            else if (activeBoss) {
+                const bossArenaCenterX = Math.min(activeBoss.worldX + activeBoss.width/2, player.worldX + canvas.width * 0.8); //防止鏡頭拉太遠
+                const desiredCameraX = bossArenaCenterX - canvas.width / 2;
+                cameraX += (desiredCameraX - cameraX) * 0.05;
+                 // 在魔王戰中，稍微限制鏡頭不要讓魔王完全移出畫面左邊
+                if (activeBoss.worldX < cameraX + 50) { // 留50px邊距
+                    cameraX = activeBoss.worldX - 50;
+                }
+            }
+            if (cameraX < 0) cameraX = 0;
+        }
+
+        // --- 碰撞檢測 (已包含音效調用) ---
+        function checkCollisions() {
+            player.bullets.forEach((bullet, bulletIndex) => {
+                let allTargets = enemies.concat(activeBoss ? [activeBoss] : []);
+                allTargets.forEach((target) => {
+                    if (!target || !player.bullets[bulletIndex]) return;
+                    if (bullet.worldX - bullet.radius < target.worldX + target.width &&
+                        bullet.worldX + bullet.radius > target.worldX &&
+                        bullet.worldY - bullet.radius < target.worldY + target.height &&
+                        bullet.worldY + bullet.radius > target.worldY) {
+                        player.bullets.splice(bulletIndex, 1); target.health -= bullet.damage;
+                        if (target.health <= 0) {
+                            score += target.isBoss ? 500 * currentMajorStage : (10 + currentMajorStage * 2);
+                            if (target.isBoss) {
+                                playSound('boss_die');
+                                bossActive = false; activeBoss = null; messageDisplay.textContent = `第 ${currentMajorStage} 關魔王已被擊敗!`;
+                                setTimeout(()=> messageDisplay.textContent = "", 3000); currentMajorStage++;
+                                if (currentMajorStage > MAX_STAGES) { gameWon = true; }
+                                else {
+                                    nextBossSpawnX = player.worldX + BOSS_SPAWN_INTERVAL + Math.random() * 500;
+                                    playerHealth = Math.min(100, playerHealth + 30 + currentMajorStage * 5);
+                                    if (currentMajorStage == 2 || currentMajorStage == 4) collectibles.push(new Collectible(target.worldX + target.width/2, target.worldY + target.height/2, 'weapon', 'egg_launcher'));
+                                    else if (currentMajorStage == 3) collectibles.push(new Collectible(target.worldX + target.width/2, target.worldY + target.height/2, 'weapon', 'feather_spread'));
+                                    else collectibles.push(new Collectible(target.worldX + target.width/2, target.worldY + target.height/2, 'health', 50));
+                                }
+                            } else { playSound('enemy_die'); const enemyIndex = enemies.indexOf(target); if (enemyIndex > -1) enemies.splice(enemyIndex, 1); }
+                        } else { if (target.isBoss) playSound('boss_hit'); }
+                        return;
+                    }
+                });
+            });
+
+            let allEnemyBulletsSources = enemies.concat(activeBoss ? [activeBoss] : []);
+            allEnemyBulletsSources.forEach(source => { /* ...敵人子彈 vs 玩家 (含音效)... */
+                if(!source) return;
+                source.bullets.forEach((bullet, bulletIndex) => {
+                    if (bullet.worldX - bullet.radius < player.worldX + player.width && /* ...碰撞條件... */
+                        bullet.worldX + bullet.radius > player.worldX &&
+                        bullet.worldY - bullet.radius < player.worldY + player.height &&
+                        bullet.worldY + bullet.radius > player.worldY) {
+                        source.bullets.splice(bulletIndex, 1);
+                        if (!player.invincible) {
+                            playerHealth -= bullet.damage; playSound('player_hit');
+                            player.invincible = true; player.invincibleTimer = 1000; // 1秒無敵
+                            if (playerHealth <= 0) { playerHealth = 0; gameOver = true; }
+                        }
+                    }
+                });
+            });
+
+            allEnemyBulletsSources.forEach(source => { /* ...敵人 vs 玩家直接碰撞 (含音效)... */
+                 if(!source) return;
+                 if (player.worldX < source.worldX + source.width && /* ...碰撞條件... */
+                    player.worldX + player.width > source.worldX &&
+                    player.worldY < source.worldY + source.height &&
+                    player.worldY + player.height > source.worldY) {
+                    if (!player.invincible) {
+                        playerHealth -= source.contactDamage * 0.1; playSound('player_hit', {volume: 0.15});
+                        player.invincible = true; player.invincibleTimer = 800; // 碰撞無敵短一點
+                        if (playerHealth <= 0) { playerHealth = 0; gameOver = true; }
+                    }
+                }
+            });
+
+            collectibles.forEach((item, index) => { /* ...玩家 vs 收集品 (含音效)... */
+                if (!item.collected && /* ...碰撞條件... */
+                    player.worldX < item.worldX + item.width &&
+                    player.worldX + player.width > item.worldX &&
+                    player.worldY < item.worldY + item.height &&
+                    player.worldY + player.height > item.worldY) {
+                    item.collected = true;
+                    if (item.type === 'weapon') { player.addWeapon(item.value); /* 音效已在addWeapon內 */ }
+                    else if (item.type === 'health') {
+                        playerHealth = Math.min(100, playerHealth + item.value); playSound('pickup_health');
+                    }
+                    // collectibles.splice(index,1); // 收集後消失 (draw方法已處理)
+                }
+            });
+        }
+
+        // --- 主遊戲循環與更新、繪製 ---
+        function update() { /* ...與前版類似 (魔王觸發等)... */
+            if (!gameRunning || gameOver) return;
+            handleInput(); player.update(); manageLevelGeneration();
+            enemies.forEach(enemy => enemy.update()); if (activeBoss) activeBoss.update();
+            updateCamera(); checkCollisions();
+
+            scoreDisplay.textContent = `分數: ${score}`; healthDisplay.textContent = `生命: ${Math.ceil(playerHealth)}`;
+            stageDisplay.textContent = `大關卡: ${currentMajorStage > MAX_STAGES ? MAX_STAGES : currentMajorStage}/${MAX_STAGES}`;
+            progressDisplay.textContent = `進度: ${Math.floor(player.worldX / 10)}m`;
+
+            if (!bossActive && !gameWon && currentMajorStage <= MAX_STAGES && player.worldX >= nextBossSpawnX) {
+                bossActive = true; enemies = enemies.filter(e => e.worldX < cameraX || e.worldX > cameraX + canvas.width); // 清理小怪
+                const bossHealth = 200 + currentMajorStage * 150; const bossWidth = 60 + currentMajorStage * 10;
+                const bossHeight = 60 + currentMajorStage * 10;
+                const bossColor = `rgb(${150 - currentMajorStage*20}, ${50 + currentMajorStage*10}, ${50 + currentMajorStage*20})`;
+                activeBoss = new Enemy(cameraX + canvas.width - bossWidth - 50, canvas.height - bossHeight - 50, bossWidth, bossHeight, bossColor, bossHealth, 'boss_veg_king', 1500 - currentMajorStage * 100, 'static', 20 + currentMajorStage * 5);
+                messageDisplay.textContent = `第 ${currentMajorStage} 關魔王出現！`; setTimeout(()=> messageDisplay.textContent = "", 3000);
+                playSound('boss_die', {volume:0.1, duration: 0.5}); // 魔王出現的警告音 (用死亡音效改)
+            }
+            if (!skillReady) { /* ...技能冷卻UI... */
+                const timeSinceSkill = Date.now() - lastSkillTime; const cooldownRemaining = Math.max(0, SKILL_COOLDOWN - timeSinceSkill);
+                skillStatusDisplay.textContent = `技能: 冷卻 ${Math.ceil(cooldownRemaining / 1000)}s`;
+                if (cooldownRemaining <= 0) { skillReady = true; skillStatusDisplay.textContent = "技能: 就緒! (S)"; }
+            }
+            if (gameWon && !gameOver) { gameOver = true; }
+        }
+
+        function draw() { /* ...與前版類似 (視差背景等)... */
+            ctx.fillStyle = '#87CEEB'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            const parallaxFactor1 = 0.1; const parallaxFactor2 = 0.3;
+            ctx.fillStyle = '#aaddff';
+            for (let i = - (cameraX * parallaxFactor1 % 100) ; i < canvas.width; i += 100) {
+                ctx.beginPath(); ctx.moveTo(i, canvas.height - 100); ctx.lineTo(i+50, canvas.height-200); ctx.lineTo(i+100, canvas.height-100); ctx.fill();
+            }
+            ctx.fillStyle = '#77bbdd';
+             for (let i = - (cameraX * parallaxFactor2 % 150) ; i < canvas.width; i += 150) { ctx.fillRect(i, canvas.height - 120, 120, 120); }
+
+            if (!gameRunning && !gameOver && !gameWon) { displayStartScreen(); return; }
+            platforms.forEach(p => p.draw()); collectibles.forEach(c => c.draw());
+            player.draw(); enemies.forEach(enemy => enemy.draw()); if (activeBoss) activeBoss.draw();
+            if (gameOver) { displayGameOverScreen(); }
+        }
+
+        function displayStartScreen() { /* ...與前版相同... */
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = 'white'; ctx.font = '30px "Courier New"'; ctx.textAlign = 'center';
+            ctx.fillText('戰鬥雞：無盡征途', canvas.width / 2, canvas.height / 2 - 60);
+            ctx.font = '20px "Courier New"';
+            ctx.fillText('準備好迎接隨機的挑戰了嗎?', canvas.width / 2, canvas.height / 2 -10);
+            ctx.fillText('擊敗五大蔬菜魔王，成為雞界傳奇!', canvas.width / 2, canvas.height / 2 + 20);
+            ctx.fillText('按"開始遊戲"或 Enter/Space', canvas.width / 2, canvas.height / 2 + 60);
+            startButton.style.display = 'block';
+        }
+        function displayGameOverScreen() { /* ...與前版相同... */
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = gameWon ? '#2ecc71' : '#e74c3c'; ctx.font = '40px "Courier New"'; ctx.textAlign = 'center';
+            if (gameWon) { ctx.fillText('恭喜通關！你是雞界戰神！', canvas.width / 2, canvas.height / 2 - 20); messageDisplay.textContent = `總分數: ${score}，太強了！`; }
+            else { ctx.fillText('遊戲結束!', canvas.width / 2, canvas.height / 2 - 20); messageDisplay.textContent = `你變成了第 ${score +1} 份雞排...`; }
+            ctx.font = '20px "Courier New"'; ctx.fillStyle = 'white';
+            ctx.fillText(`最終分數: ${score}`, canvas.width / 2, canvas.height / 2 + 20);
+            ctx.fillText(`最高關卡: ${currentMajorStage > MAX_STAGES ? MAX_STAGES : currentMajorStage}`, canvas.width / 2, canvas.height / 2 + 50);
+            ctx.fillText('點擊"開始遊戲"重新挑戰', canvas.width / 2, canvas.height / 2 + 90);
+            startButton.style.display = 'block'; startButton.textContent = "重新開始"; gameRunning = false;
+        }
+
+        // --- 初始化與遊戲開始 ---
+        function initGame() { /* ...與前版類似 (重置彈藥等)... */
+            score = 0; currentMajorStage = 1; playerHealth = 100; gameOver = false; gameWon = false;
+            bossActive = false; activeBoss = null; cameraX = 0; worldGeneratedUpToX = 0;
+            player.worldX = 100; player.worldY = canvas.height - PLAYER_HEIGHT - 100;
+            player.dx = 0; player.dy = 0; player.grounded = false; player.bullets = []; player.facingRight = true;
+            player.invincible = false; player.invincibleTimer = 0;
+            player.weapons = ['peck_cannon']; // 重置為只有初始武器
+            player.currentWeaponIndex = 0;
+            player.P_feather_spread_ammo = WEAPON_TYPES.feather_spread.maxAmmo; // 預設彈藥
+            player.P_egg_launcher_ammo = WEAPON_TYPES.egg_launcher.maxAmmo;  // 預設彈藥
+
+            player.updateWeaponUI();
+            skillReady = true; lastSkillTime = 0; skillStatusDisplay.textContent = "技能: 就緒! (S)";
+            platforms = []; enemies = []; collectibles = [];
+            generateSegment(0); nextBossSpawnX = BOSS_SPAWN_INTERVAL; messageDisplay.textContent = "";
+        }
+
+        let animationFrameId = null; // 用於控制遊戲循環
+        function gameLoop() {
+            if (!gameRunning && gameOver) { draw(); return; } // 遊戲結束只繪製結束畫面
+            if (!gameRunning && !gameOver) { draw(); return; } // 遊戲未開始只繪製開始畫面 (理論上不會到這裡，因為startbutton會設gameRunning)
+
+
+            update(); draw();
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        startButton.addEventListener('click', () => {
+            if (animationFrameId) { cancelAnimationFrame(animationFrameId); animationFrameId = null; } // 清除舊的循環
+
+            if (!gameRunning || gameOver) {
+                if (audioCtx && audioCtx.state === 'suspended') {
+                    audioCtx.resume().catch(e => console.error("AudioContext resume failed:", e));
+                }
+                initGame();
+                gameRunning = true; gameOver = false; gameWon = false;
+                startButton.style.display = 'none'; startButton.textContent = "開始遊戲";
+                gameLoop();
+            }
+        });
+        draw(); // 初始繪製開始畫面
+    </script>
+</body>
+</html>
