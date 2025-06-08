@@ -34,6 +34,13 @@
             border: 3px solid rgba(255,255,255,0.2);
             transition: background 0.5s ease, filter 0.5s ease;
         }
+        .screen-shake { animation: shake-horizontal 0.1s linear infinite; }
+        @keyframes shake-horizontal {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(3px); }
+            75% { transform: translateX(-3px); }
+        }
+
         canvas {
             display: block;
             width: 100%;
@@ -69,10 +76,11 @@
             user-select: none;
         }
         .status-icon {
-            width: 30px;
+            min-width: 30px;
             height: 30px;
+            padding: 0 8px;
             background-color: rgba(0,0,0,0.5);
-            border-radius: 50%;
+            border-radius: 15px;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -98,6 +106,7 @@
             border-radius: 10px;
             text-shadow: 1px 1px 3px rgba(0,0,0,0.6);
             border: 1px solid rgba(255,255,255,0.3);
+            user-select: none; /* Prevent selection */
         }
         #energy-bar-container {
             width: 100%;
@@ -235,8 +244,9 @@
             <div class="top-ui">
                 <div id="score" class="score-display">分數: 0</div>
                 <div class="status-icons">
+                    <div id="slowmo-status" class="status-icon" style="display: none;"></div>
                     <div id="shield-status" class="status-icon" style="display: none;">🛡️</div>
-                    <div id="multiplier-status" class="status-icon" style="display: none;">x2</div>
+                    <div id="multiplier-status" class="status-icon" style="display: none;"></div>
                 </div>
                 <div id="pause-button">II</div>
                 <div id="lives" class="lives-display">生命: 3</div>
@@ -311,19 +321,19 @@
                 </ul>
                 <h3>🎁 道具 (滑動獲取)：</h3>
                  <ul>
-                    <li><canvas class="item-icon-canvas" data-type="slowmo_icon"></canvas>時間緩緩 (15秒)、<canvas class="item-icon-canvas" data-type="shield_icon"></canvas>守護光盾、<canvas class="item-icon-canvas" data-type="multi_icon"></canvas>雙倍積分、<canvas class="item-icon-canvas" data-type="energy_icon"></canvas>能量補充。</li>
+                    <li><canvas class="item-icon-canvas" data-type="slowmo_icon"></canvas>時間緩緩 (15秒)、<canvas class="item-icon-canvas" data-type="shield_icon"></canvas>守護光盾、<canvas class="item-icon-canvas" data-type="multi_icon"></canvas>雙倍積分 (30秒)、<canvas class="item-icon-canvas" data-type="energy_icon"></canvas>能量補充。</li>
                 </ul>
-                <h3>魔王一：武裝污染核心 (時限: 60秒)</h3>
+                <h3>魔王一：武裝污染核心 (時限: 20秒)</h3>
                 <ul>
-                    <li><strong>新機制：</strong> 魔王被旋轉的護盾臂保護。你必須抓準**空隙**攻擊核心！</li>
+                    <li><strong>新機制：</strong> 魔王被極速旋轉的護盾臂保護。你必須抓準**狹窄的空隙**攻擊核心！</li>
                 </ul>
-                <h3>魔王二：腐蝕巨鰻 (時限: 55秒)</h3>
+                <h3>魔王二：狂暴巨鰻 (時限: 30秒)</h3>
                 <ul>
-                    <li><strong>新機制：</strong> 巨鰻身體由「裝甲」和發光的「弱點」組成。集中火力攻擊**弱點**才能造成傷害！</li>
+                    <li><strong>新機制：</strong> 巨鰻會瘋狂移動並震動畫面。它的身體大多是無敵的，你必須集中火力攻擊**隨機閃爍的弱點**！</li>
                 </ul>
-                <h3>魔王三：虛實怨靈 (時限: 65秒)</h3>
+                <h3>魔王三：幽影裂隙 (時限: 65秒)</h3>
                 <ul>
-                    <li>它會分身成數個幻象，你必須找出**顏色最深**的「本體」進行攻擊。它還會釋放「濃霧」遮蔽畫面，必須快速滑動來清除！</li>
+                    <li><strong>新機制：</strong> 魔王會不斷傳送。在它傳送後**撕開裂隙**的瞬間，才是攻擊它的唯一機會！</li>
                 </ul>
                 <p>祝你好運，環保特攻隊員！</p>
             </div>
@@ -343,6 +353,7 @@
         const energyText = document.getElementById('energy-text');
         const shieldStatus = document.getElementById('shield-status');
         const multiplierStatus = document.getElementById('multiplier-status');
+        const slowmoStatus = document.getElementById('slowmo-status');
         const startScreen = document.getElementById('start-screen');
         const gameOverScreen = document.getElementById('game-over-screen');
         const pauseScreen = document.getElementById('pause-screen');
@@ -378,7 +389,7 @@
         const SLOW_MOTION_DURATION = 15000;
         let isShieldActive = false;
         let isScoreMultiplierActive = false, scoreMultiplierEndTime = 0;
-        const ITEM_EFFECT_DURATION = 7000;
+        const SCORE_MULTIPLIER_DURATION = 30000; // 30 seconds
         const ITEM_SPAWN_CHANCE = 0.07;
         
         // --- Sound Engine ---
@@ -454,21 +465,33 @@
                 this.name = "武裝污染核心";
                 this.x = canvas.width / 2; this.y = 150;
                 this.radius = Math.min(canvas.width / 5, 50);
-                this.timeLimit = 60000; this.startTime = Date.now();
-                this.maxHealth = 200 + level * 50; this.health = this.maxHealth;
+                this.timeLimit = 20000; this.startTime = Date.now();
+                this.maxHealth = 400 + level * 100; this.health = this.maxHealth;
                 this.shieldRotation = 0;
+                this.shieldRotationSpeed = 0.02; // Slower speed
+                this.isSpinning = false;
+                this.spinCycleTime = Date.now();
+                this.spinDuration = 2000; 
+                this.stopDuration = 1500;
                 this.shieldArms = 4;
-                this.shieldArmLength = this.radius + 60;
-                this.shieldArmWidth = 20;
+                this.shieldArmLength = this.radius + 70;
+                this.shieldArmWidth = 35; 
             }
             update(currentTime) {
-                this.shieldRotation += 0.01;
+                if(currentTime > this.spinCycleTime) {
+                    this.isSpinning = !this.isSpinning;
+                    this.spinCycleTime = currentTime + (this.isSpinning ? this.spinDuration : this.stopDuration);
+                }
+
+                if (this.isSpinning) {
+                    this.shieldRotation += this.shieldRotationSpeed;
+                }
+
                 if (this.health <= 0) { bossDefeated(); }
             }
             draw() {
                 ctx.save(); ctx.translate(this.x, this.y);
                 
-                // Draw rotating shield arms first
                 ctx.save();
                 ctx.rotate(this.shieldRotation);
                 ctx.fillStyle = '#64748B';
@@ -481,7 +504,6 @@
                 }
                 ctx.restore();
 
-                // Draw main body on top
                 ctx.fillStyle = '#E53935';
                 ctx.beginPath(); ctx.arc(0, 0, this.radius, 0, Math.PI * 2); ctx.fill();
                 ctx.strokeStyle = '#B71C1C'; ctx.lineWidth = 4; ctx.stroke();
@@ -501,48 +523,80 @@
 
         class Boss2_WasteWyrm {
             constructor() {
-                this.name = "腐蝕巨鰻"; this.segmentCount = 5 + level; this.segments = [];
+                this.name = "狂暴巨鰻"; 
+                this.segmentCount = 5 + level; 
+                this.segments = [];
                 this.totalHealth = 0; this.maxTotalHealth = 0;
-                this.timeLimit = 55000; this.startTime = Date.now();
-                this.head = { x: canvas.width / 2, y: 100, angle: 0, speed: 1.5 + level * 0.2 };
+                this.timeLimit = 30000; this.startTime = Date.now();
+                this.head = { x: canvas.width / 2, y: 100, angle: 0 }; 
+                this.weakPointIndex = -1;
+                this.lastWeakPointSwitch = 0;
+                this.weakPointDuration = 2500; 
+
                 for(let i = 0; i < this.segmentCount; i++) {
                     const isWeakPoint = i > 0 && i % 2 === 0;
-                    const health = isWeakPoint ? 50 + level*10 : 9999;
+                    const health = isWeakPoint ? 100 + level*20 : 9999;
                     this.segments.push({
                         x: canvas.width / 2, y: 100 + i * 20,
                         radius: (i === 0) ? 35 : 25, health: health, maxHealth: health, 
-                        isHead: i === 0, isWeakPoint: isWeakPoint
+                        isHead: i === 0, isWeakPoint: false
                     });
-                    if(isWeakPoint) this.totalHealth += health;
+                    if (isWeakPoint) this.totalHealth += health;
                 }
                 this.maxTotalHealth = this.totalHealth;
+                this.switchWeakPoint(); 
+            }
+            switchWeakPoint() {
+                if(this.weakPointIndex !== -1 && this.segments[this.weakPointIndex]) {
+                     this.segments[this.weakPointIndex].isWeakPoint = false;
+                }
+                
+                const availableSegments = this.segments.map((s, i) => i).filter(i => i > 0 && this.segments[i].health > 0);
+                if (availableSegments.length === 0) return; 
+                
+                this.weakPointIndex = availableSegments[Math.floor(Math.random() * availableSegments.length)];
+                this.segments[this.weakPointIndex].isWeakPoint = true;
+                this.lastWeakPointSwitch = Date.now();
             }
             update(currentTime) {
-                this.head.angle += 0.02;
-                this.head.x = canvas.width / 2 + Math.sin(this.head.angle) * (canvas.width / 2 - 40);
-                this.head.y = 120 + Math.cos(this.head.angle * 2) * 50;
+                if (currentTime - this.lastWeakPointSwitch > this.weakPointDuration) {
+                    this.switchWeakPoint();
+                }
+
+                this.head.angle += 0.05; 
+                this.head.x = canvas.width / 2 + Math.sin(this.head.angle) * (canvas.width / 3);
+                this.head.y = 150 + Math.cos(this.head.angle * 2) * 60;
+                
                 let leader = this.head;
                 this.segments.forEach(seg => {
                     if (seg.health > 0) {
                         const dx = leader.x - seg.x, dy = leader.y - seg.y;
                         const dist = Math.hypot(dx, dy);
                         const followDist = seg.isHead ? 0 : seg.radius * 0.8;
-                        if(dist > followDist) { seg.x += dx * 0.15; seg.y += dy * 0.15; }
+                        if(dist > followDist) { seg.x += dx * 0.25; seg.y += dy * 0.25; }
                         leader = seg;
                     }
                 });
-                if (this.totalHealth <= 0) bossDefeated();
+                
+                const shakeX = (Math.random() - 0.5) * 4;
+                const shakeY = (Math.random() - 0.5) * 4;
+                gameContainer.style.transform = `translate(${shakeX}px, ${shakeY}px)`;
+
+                const remainingWeakPoints = this.segments.filter(s => !s.isHead && s.health > 0).length;
+                if (remainingWeakPoints === 0) {
+                    bossDefeated();
+                }
             }
             draw() {
                  this.segments.forEach((seg) => {
                      if (seg.health > 0) {
                         ctx.beginPath();
-                        ctx.fillStyle = seg.isWeakPoint ? '#FFC107' : (seg.isHead ? '#795548' : '#A1887F'); 
+                        ctx.fillStyle = seg.isWeakPoint ? '#FFC107' : (seg.isHead ? '#4A148C' : '#A1887F'); 
                         ctx.strokeStyle = seg.isWeakPoint ? '#FF8F00' : '#4E342E';
                         ctx.lineWidth = 3; ctx.arc(seg.x, seg.y, seg.radius, 0, Math.PI * 2);
                         ctx.fill(); ctx.stroke();
                         if(seg.isHead){
-                            ctx.fillStyle = '#FF5722'; ctx.beginPath();
+                            ctx.fillStyle = '#E91E63'; ctx.beginPath();
                             ctx.arc(seg.x, seg.y, 10, 0, Math.PI*2); ctx.fill();
                         }
                      }
@@ -556,11 +610,14 @@
                     createBurstParticles(seg.x, seg.y, '#FFD54F', 15);
                     if(seg.health <= 0) {
                         createBurstParticles(seg.x, seg.y, '#FFFFFF', 30); playSound(sounds.explosion);
+                        this.switchWeakPoint();
                     }
                 }
             }
             updateBossHealthDisplay() {
-                const percentage = Math.max(0, (this.totalHealth / this.maxTotalHealth) * 100);
+                const currentHealth = this.segments.filter(s => !s.isHead).reduce((sum, s) => sum + s.health, 0);
+                const maxHealth = this.segments.filter(s => !s.isHead).reduce((sum, s) => sum + s.maxHealth, 0);
+                const percentage = Math.max(0, (currentHealth / maxHealth) * 100);
                 bossHealthBar.style.width = `${percentage}%`;
                 bossHealthText.textContent = `巨鰻弱點: ${Math.ceil(percentage)}%`;
             }
@@ -568,54 +625,57 @@
         
         class Boss3_SmogSpecter {
             constructor() {
-                this.name = "虛實怨靈"; this.specters = [];
-                this.maxHealth = 120 + level * 25; this.health = this.maxHealth;
+                this.name = "幽影裂隙";
                 this.timeLimit = 65000; this.startTime = Date.now();
-                this.smogOverlayAlpha = 0; this.lastTeleportTime = 0; this.teleportInterval = 5000;
-                this.lastSmogAttackTime = 0; this.smogAttackInterval = 8000; this.spawnSpecters();
-            }
-            spawnSpecters() {
-                this.specters = []; const realIndex = Math.floor(Math.random() * 4);
-                for(let i=0; i<4; i++){
-                    this.specters.push({
-                        x: (canvas.width / 5) * (i + 1), y: Math.random() * 100 + 100,
-                        radius: 40, isReal: i === realIndex, alpha: 1, isHit: false
-                    });
-                }
+                this.maxHealth = 200 + level * 50; this.health = this.maxHealth;
+                this.x = canvas.width / 2; this.y = -100;
+                this.radius = 45;
+                this.isVulnerable = false;
+                this.vulnerableEndTime = 0;
+                this.lastTeleportTime = 0;
+                this.teleportInterval = 3000;
+                this.riftParticles = [];
             }
             update(currentTime) {
+                if (this.isVulnerable && currentTime > this.vulnerableEndTime) {
+                    this.isVulnerable = false;
+                }
+                
                 if(currentTime - this.lastTeleportTime > this.teleportInterval) {
-                    this.spawnSpecters(); this.lastTeleportTime = currentTime;
-                    showTemporaryMessage("怨靈轉移了位置！", 1500, '#CE93D8');
+                    this.x = Math.random() * (canvas.width - 100) + 50;
+                    this.y = Math.random() * (canvas.height / 2) + 100;
+                    this.isVulnerable = true;
+                    this.vulnerableEndTime = currentTime + 800;
+                    this.lastTeleportTime = currentTime;
+
+                    for(let i=0; i<30; i++){
+                        this.riftParticles.push(new Particle(this.x, this.y, `rgba(189, 11, 233, ${Math.random()})`, 10, 20));
+                    }
+                    playSound(sounds.powerUp, 800, 0.2);
                 }
-                if(currentTime - this.lastSmogAttackTime > this.smogAttackInterval) {
-                    this.smogOverlayAlpha = 0.95; this.lastSmogAttackTime = currentTime;
-                    showTemporaryMessage("濃霧障目！滑動清除！", 2000, '#B0BEC5');
-                }
-                this.specters.forEach(s => { if(s.isHit) s.alpha -= 0.1; });
-                this.specters = this.specters.filter(s => s.alpha > 0);
+                
+                this.riftParticles.forEach(p => p.update());
+                this.riftParticles = this.riftParticles.filter(p => p.life > 0);
+
                 if (this.health <= 0) bossDefeated();
             }
             draw() {
-                 this.specters.forEach(s => {
-                    ctx.save(); ctx.globalAlpha = s.alpha;
-                    const flicker = s.isReal ? 1.0 : 0.4;
-                    ctx.fillStyle = `rgba(142, 36, 170, ${flicker})`; ctx.strokeStyle = '#4A148C';
-                    drawShape('fume', s.radius, ctx, false); ctx.restore();
-                 });
-                 if (this.smogOverlayAlpha > 0) {
-                     ctx.fillStyle = `rgba(55, 71, 79, ${this.smogOverlayAlpha})`;
-                     ctx.fillRect(0, 0, canvas.width, canvas.height);
-                 }
+                this.riftParticles.forEach(p => p.draw());
+                
+                if (this.isVulnerable) {
+                    ctx.save();
+                    ctx.translate(this.x, this.y);
+                    const scale = 1 + Math.sin((Date.now() - (this.vulnerableEndTime - 800))/800 * Math.PI) * 0.2;
+                    ctx.scale(scale, scale);
+                    ctx.globalAlpha = Math.sin((Date.now() - (this.vulnerableEndTime - 800))/800 * Math.PI);
+                    drawShape('fume', this.radius, ctx);
+                    ctx.restore();
+                }
             }
-            takeDamage(amount, specterIndex) {
-                 const s = this.specters[specterIndex]; if(!s) return;
-                 s.isHit = true;
-                 if (s.isReal) {
+            takeDamage(amount) {
+                 if (this.isVulnerable) {
                      this.health -= amount; playSound(sounds.bossHit, 400);
-                     createBurstParticles(s.x, s.y, '#E1BEE7', 20); this.lastTeleportTime = Date.now();
-                 } else {
-                     playSound(sounds.error, 300, 0.2); createBurstParticles(s.x, s.y, '#CFD8DC', 10);
+                     createBurstParticles(this.x, this.y, '#E1BEE7', 20);
                  }
             }
             updateBossHealthDisplay() {
@@ -685,6 +745,8 @@
                             handleBossTimeout();
                         }
                     }
+                } else {
+                    gameContainer.style.transform = '';
                 }
 
                 particles.forEach(p => { p.update(); p.draw(); });
@@ -766,7 +828,7 @@
             const dx = p2.x - p1.x;
             const dy = p2.y - p1.y;
             const lenSq = dx * dx + dy * dy;
-            if (lenSq === 0) {
+            if (lenSq === 0) { 
                 const distSq = Math.pow(circle.x - p1.x, 2) + Math.pow(circle.y - p1.y, 2);
                 return distSq < circle.radius * circle.radius;
             }
@@ -794,14 +856,15 @@
                     let isBlocked = false;
                     for (let i = 0; i < boss.shieldArms; i++) {
                         const armAngle = (i / boss.shieldArms) * Math.PI * 2 + boss.shieldRotation;
-                        const angleDiff = Math.abs(angle - armAngle) % (Math.PI * 2);
-                        const armWidthAngle = Math.atan2(boss.shieldArmWidth / 2, boss.radius);
-                        if(Math.min(angleDiff, Math.PI * 2 - angleDiff) < armWidthAngle) {
+                        let angleDiff = Math.abs(angle - armAngle);
+                        angleDiff = angleDiff > Math.PI ? Math.PI * 2 - angleDiff : angleDiff;
+                        const armWidthAngle = Math.atan2(boss.shieldArmWidth / 2, boss.radius + boss.shieldArmLength/2);
+                        if (angleDiff < armWidthAngle) {
                             isBlocked = true;
                             break;
                         }
                     }
-                    if (!isBlocked && Math.hypot(x-boss.x, y-boss.y) < boss.radius) {
+                    if (!isBlocked && lineCircleIntersection(p1, p2, {x: boss.x, y: boss.y, radius: boss.radius})) {
                         boss.takeDamage(15);
                     }
                 } else if (boss instanceof Boss2_WasteWyrm) {
@@ -890,16 +953,16 @@
             let numToSpawn = Math.min(4, 1 + Math.floor(score / 500));
             for (let k = 0; k < numToSpawn; k++) {
                 let type;
-                if (Math.random() < ITEM_SPAWN_CHANCE) { type = ITEM_TYPES.filter(t => t !== GameObjectType.BOSS1_CELL)[Math.floor(Math.random() * (ITEM_TYPES.length -1))]; } 
-                else { type = Math.random() < 0.6 ? POLLUTANT_TYPES.filter(t=> t !== GameObjectType.BOSS1_MINION)[Math.floor(Math.random() * (POLLUTANT_TYPES.length - 1))] : PROTECTED_TYPES[Math.floor(Math.random() * PROTECTED_TYPES.length)]; }
+                if (Math.random() < ITEM_SPAWN_CHANCE) { type = ITEM_TYPES[Math.floor(Math.random() * ITEM_TYPES.length)]; } 
+                else { type = Math.random() < 0.6 ? POLLUTANT_TYPES[Math.floor(Math.random() * POLLUTANT_TYPES.length)] : PROTECTED_TYPES[Math.floor(Math.random() * PROTECTED_TYPES.length)]; }
                 
                 const x = Math.random() * canvas.width;
                 const y = -60;
 
                 const newObj = new GameObject(x, y, type);
                 
-                const speedFactor = 0.15 + (energy / maxEnergy) * 1.0;
-                const baseSpeed = (newObj.isItem ? 1.0 : 1.5) * gameSpeedMultiplier * speedFactor;
+                const speedFactor = 0.1 + (energy / maxEnergy) * 1.0;
+                const baseSpeed = (newObj.isItem ? 0.5 : 0.8) * gameSpeedMultiplier * speedFactor;
                 
                 newObj.vy = (Math.random() * 0.4 + 0.6) * baseSpeed;
                 newObj.vx = (Math.random() - 0.5) * baseSpeed;
@@ -932,8 +995,35 @@
             energyBar.style.width = `${energyPercentage}%`;
             energyText.textContent = energyPercentage >= 15 ? `能量: ${Math.floor(energyPercentage)}%` : '';
             energyBar.classList.toggle('full', energyPercentage >= 100);
+            
             shieldStatus.style.display = isShieldActive ? 'flex' : 'none';
-            multiplierStatus.style.display = isScoreMultiplierActive ? 'flex' : 'none';
+            
+            // Item Timers
+            if (isSlowMotionActive) {
+                slowmoStatus.style.display = 'flex';
+                const time = Math.ceil((slowMotionEndTime - Date.now())/1000);
+                if (time > 0) {
+                    slowmoStatus.textContent = `⏳ ${time}`;
+                } else {
+                    isSlowMotionActive = false; // Ensure flag is false
+                    slowmoStatus.style.display = 'none';
+                }
+            } else {
+                slowmoStatus.style.display = 'none';
+            }
+
+            if (isScoreMultiplierActive) {
+                multiplierStatus.style.display = 'flex';
+                 const time = Math.ceil((scoreMultiplierEndTime - Date.now())/1000);
+                if(time > 0) {
+                    multiplierStatus.textContent = `x2 ${time}`;
+                } else {
+                    isScoreMultiplierActive = false; // Ensure flag is false
+                    multiplierStatus.style.display = 'none';
+                }
+            } else {
+                multiplierStatus.style.display = 'none';
+            }
         }
         
         function updateItemEffects(currentTime) {
@@ -947,7 +1037,7 @@
             switch (itemType) {
                 case GameObjectType.ITEM_SLOW_MOTION: isSlowMotionActive = true; slowMotionEndTime = currentTime + SLOW_MOTION_DURATION; showTemporaryMessage("時間緩緩！", 2000, '#B0BEC5'); break;
                 case GameObjectType.ITEM_SHIELD: isShieldActive = true; showTemporaryMessage("守護光盾！", 2000, '#4DB6AC'); break;
-                case GameObjectType.ITEM_SCORE_MULTIPLIER: isScoreMultiplierActive = true; scoreMultiplierEndTime = currentTime + ITEM_EFFECT_DURATION; showTemporaryMessage("雙倍積分！", 2000, '#FFD54F'); break;
+                case GameObjectType.ITEM_SCORE_MULTIPLIER: isScoreMultiplierActive = true; scoreMultiplierEndTime = currentTime + SCORE_MULTIPLIER_DURATION; showTemporaryMessage("雙倍積分！", 2000, '#FFD54F'); break;
                 case GameObjectType.ITEM_ENERGY_BOOST: addEnergy(40); showTemporaryMessage("能量補充！", 1500, '#FFEE58'); break;
             }
             updateUI();
@@ -1044,13 +1134,6 @@
                     c.fillStyle = '#FFEE58'; c.strokeStyle = '#FDD835'; c.lineWidth = isIcon ? 1.5 : 2;
                     c.moveTo(-radius * 0.2, -radius); c.lineTo(radius * 0.3, -radius * 0.1); c.lineTo(0, -radius * 0.1);
                     c.lineTo(radius * 0.2, radius); c.lineTo(-radius * 0.3, -radius * 0.2); c.lineTo(0, -radius * 0.2); c.closePath(); c.fill(); c.stroke(); break;
-                case GameObjectType.BOSS1_MINION:
-                     c.fillStyle = '#AB47BC'; c.strokeStyle = '#6A1B9A'; c.lineWidth = lineWidth;
-                     for (let i = 0; i < 6; i++) { c.lineTo(Math.cos(i / 3 * Math.PI) * radius, Math.sin(i / 3 * Math.PI) * radius * 0.5); }
-                     c.closePath(); c.fill(); c.stroke(); break;
-                case GameObjectType.BOSS1_CELL:
-                     c.fillStyle = '#FFF176'; c.strokeStyle = '#FDD835'; c.lineWidth = lineWidth;
-                     c.rect(-radius*0.5, -radius*0.5, radius, radius); c.fill(); c.stroke(); break;
                 default: c.fillStyle = 'magenta'; c.arc(0,0,radius,0,Math.PI*2); c.fill(); break;
             }
         }
