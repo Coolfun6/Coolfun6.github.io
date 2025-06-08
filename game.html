@@ -66,6 +66,7 @@
         .status-icons {
             display: flex;
             gap: 8px;
+            user-select: none;
         }
         .status-icon {
             width: 30px;
@@ -106,11 +107,7 @@
             margin-top: 8px;
             overflow: hidden;
             border: 2px solid rgba(255,255,255,0.6);
-            cursor: pointer;
-            transition: transform 0.1s ease-out;
-        }
-        #energy-bar-container:active {
-            transform: scale(0.98);
+            position: relative;
         }
         #energy-bar {
             width: 0%;
@@ -119,13 +116,23 @@
             background-size: 300% 100%;
             animation: animated-gradient-subtle 4s ease infinite;
             border-radius: 11px 0 0 11px;
-            transition: width 0.3s ease-in-out, background 0.3s ease-in-out, border-radius 0.1s linear, transform 0.15s ease-out;
-            text-align: center;
-            line-height: 24px; 
+            transition: width 0.3s ease-in-out, background 0.3s ease-in-out, border-radius 0.1s linear;
+        }
+        .bar-text {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
             color: white;
             font-weight: bold;
-            font-size: 0.9rem;
             text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+        }
+        #energy-text {
+            font-size: 0.9rem;
         }
         #energy-bar.full {
             background: linear-gradient(90deg, #FFD700, #FFB300, #FF8F00, #FFB300, #FFD700);
@@ -133,10 +140,7 @@
             animation: animated-gradient-active 3s ease infinite, pulse-gold-shadow 1.5s infinite;
             border-radius: 11px;
         }
-        #energy-bar.energy-gained {
-            transform: scaleX(1.02) scaleY(1.1);
-        }
-
+        
         @keyframes animated-gradient-subtle { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
         @keyframes animated-gradient-active { 0% { background-position: 200% 50%; } 50% { background-position: -100% 50%; } 100% { background-position: 200% 50%; } }
         @keyframes pulse-gold-shadow { 0% { box-shadow: 0 0 3px #FFD700, 0 0 5px #FFB300; } 50% { box-shadow: 0 0 10px 3px #FFD700, 0 0 15px 5px #FFB300; } 100% { box-shadow: 0 0 3px #FFD700, 0 0 5px #FFB300; } }
@@ -189,6 +193,7 @@
             width: 100%; height: 30px;
             background-color: rgba(0,0,0,0.6); border-radius: 15px;
             overflow: hidden; display: none;
+            position: relative;
         }
         #boss-health-container { border: 2.5px solid #B71C1C; }
         #boss-timer-container { border: 2.5px solid #4FC3F7; height: 18px; }
@@ -196,11 +201,11 @@
             width: 100%; height: 100%;
             border-radius: 12px 0 0 12px;
             transition: width 0.2s linear;
-            display: flex; align-items: center; justify-content: center;
-            font-weight: bold; color: white; text-shadow: 1px 1px 2px black;
         }
-        #boss-health-bar { background: linear-gradient(90deg, #C62828, #F44336, #EF5350); font-size: 1rem; }
-        #boss-timer-bar { background: linear-gradient(90deg, #29B6F6, #4FC3F7, #81D4FA); font-size: 0.8rem; }
+        #boss-health-bar { background: linear-gradient(90deg, #C62828, #F44336, #EF5350); }
+        #boss-timer-bar { background: linear-gradient(90deg, #29B6F6, #4FC3F7, #81D4FA); }
+        #boss-health-text { font-size: 1rem; }
+        #boss-timer-text { font-size: 0.8rem; }
         
         #pause-button {
             font-size: clamp(1.2rem, 4.5vw, 1.6rem); background-color: rgba(0,0,0,0.5);
@@ -209,11 +214,22 @@
         }
         #pause-button:hover { background-color: rgba(0,0,0,0.7); }
         .item-icon-canvas { display: inline-block; width: 22px; height: 22px; margin-right: 6px; vertical-align: middle; border: 1px solid #ccc; border-radius: 4px; background: #334; }
+        #swipe-line {
+            position: absolute;
+            bottom: 65px;
+            left: 5%;
+            width: 90%;
+            height: 2px;
+            background-color: rgba(255, 255, 255, 0.2);
+            border-radius: 1px;
+            z-index: 5;
+        }
     </style>
 </head>
 <body>
     <div id="game-container">
         <canvas id="gameCanvas"></canvas>
+        <div id="swipe-line"></div>
         
         <div class="ui-overlay">
             <div class="top-ui">
@@ -227,15 +243,18 @@
             </div>
             <div class="boss-ui-container">
                 <div id="boss-health-container">
-                    <div id="boss-health-bar">魔王血量</div>
+                    <div id="boss-health-bar"></div>
+                    <div id="boss-health-text" class="bar-text">魔王血量</div>
                 </div>
                 <div id="boss-timer-container">
-                    <div id="boss-timer-bar">時間</div>
+                    <div id="boss-timer-bar"></div>
+                    <div id="boss-timer-text" class="bar-text">時間</div>
                 </div>
             </div>
             <div class="bottom-ui">
-                 <div id="energy-bar-container" title="能量集滿後點擊施放淨化爆發！">
-                    <div id="energy-bar">能量</div>
+                 <div id="energy-bar-container">
+                    <div id="energy-bar"></div>
+                    <div id="energy-text" class="bar-text">能量</div>
                 </div>
             </div>
         </div>
@@ -280,7 +299,7 @@
                 <ul>
                     <li>魔王出現時，畫面上方會出現**倒數計時條**！</li>
                     <li>你必須在時限內擊敗魔王。若時間耗盡魔王將會逃跑，並且你會**失去一點生命值**！</li>
-                    <li>在魔王戰中，能量條集滿時可點擊它來施放強力的「**淨化衝擊**」！</li>
+                    <li>在魔王戰中，能量條集滿時會**自動施放**一次強力的「**淨化衝擊**」！</li>
                 </ul>
                 <h3>☠️ 污染物 (需要淨化)：</h3>
                 <ul>
@@ -292,20 +311,19 @@
                 </ul>
                 <h3>🎁 道具 (滑動獲取)：</h3>
                  <ul>
-                    <li><canvas class="item-icon-canvas" data-type="slowmo_icon"></canvas>時間緩緩、<canvas class="item-icon-canvas" data-type="shield_icon"></canvas>守護光盾、<canvas class="item-icon-canvas" data-type="multi_icon"></canvas>雙倍積分、<canvas class="item-icon-canvas" data-type="energy_icon"></canvas>能量補充。</li>
+                    <li><canvas class="item-icon-canvas" data-type="slowmo_icon"></canvas>時間緩緩 (15秒)、<canvas class="item-icon-canvas" data-type="shield_icon"></canvas>守護光盾、<canvas class="item-icon-canvas" data-type="multi_icon"></canvas>雙倍積分、<canvas class="item-icon-canvas" data-type="energy_icon"></canvas>能量補充。</li>
                 </ul>
-                <h3>魔王一：污染核心 (時限: 60秒)</h3>
+                <h3>魔王一：武裝污染核心 (時限: 60秒)</h3>
                 <ul>
-                    <li><strong>階段一 (垃圾護盾):</strong> 魔王被護盾保護。淨化它釋放的「污染小怪」來為你的滑動軌跡充能。使用充能的「淨化光矛」(發光的軌跡) 來攻擊護盾。</li>
-                    <li><strong>階段二 (核心暴露):</strong> 護盾破壞後，直接滑動攻擊暴露的「污染核心」！</li>
+                    <li><strong>新機制：</strong> 魔王被旋轉的護盾臂保護。你必須抓準**空隙**攻擊核心！</li>
                 </ul>
-                <h3>魔王二：廢料巨鰻 (時限: 55秒)</h3>
+                <h3>魔王二：腐蝕巨鰻 (時限: 55秒)</h3>
                 <ul>
-                    <li>一隻巨大的蠕蟲狀魔王，由多個「身體節點」組成。你必須逐一滑動攻擊並摧毀它所有的身體節點。</li>
+                    <li><strong>新機制：</strong> 巨鰻身體由「裝甲」和發光的「弱點」組成。集中火力攻擊**弱點**才能造成傷害！</li>
                 </ul>
-                <h3>魔王三：迷霧怨靈 (時限: 65秒)</h3>
+                <h3>魔王三：虛實怨靈 (時限: 65秒)</h3>
                 <ul>
-                    <li>一隻狡猾的幽靈狀魔王。它會分身成數個幻象，你必須找出閃爍的「本體」進行攻擊。它還會釋放「濃霧」遮蔽畫面，必須快速滑動來清除！</li>
+                    <li>它會分身成數個幻象，你必須找出**顏色最深**的「本體」進行攻擊。它還會釋放「濃霧」遮蔽畫面，必須快速滑動來清除！</li>
                 </ul>
                 <p>祝你好運，環保特攻隊員！</p>
             </div>
@@ -322,6 +340,7 @@
         const livesDisplay = document.getElementById('lives');
         const energyBar = document.getElementById('energy-bar');
         const energyBarContainer = document.getElementById('energy-bar-container');
+        const energyText = document.getElementById('energy-text');
         const shieldStatus = document.getElementById('shield-status');
         const multiplierStatus = document.getElementById('multiplier-status');
         const startScreen = document.getElementById('start-screen');
@@ -341,19 +360,22 @@
         const closeHowToPlayButton = document.getElementById('close-how-to-play-button');
         const bossHealthContainer = document.getElementById('boss-health-container');
         const bossHealthBar = document.getElementById('boss-health-bar');
+        const bossHealthText = document.getElementById('boss-health-text');
         const bossTimerContainer = document.getElementById('boss-timer-container');
         const bossTimerBar = document.getElementById('boss-timer-bar');
+        const bossTimerText = document.getElementById('boss-timer-text');
 
         // --- Game State Variables ---
         let score = 0, lives = 3, energy = 0, level = 1;
         const maxEnergy = 100;
         let gameObjects = [], particles = [], swipePath = [];
         let isSwiping = false, animationFrameId, gameState = 'start';
-        let gameSpeedMultiplier = 1, baseSpawnInterval = 1000, currentSpawnInterval = 1000, lastSpawnTime = 0;
+        let gameSpeedMultiplier = 1, baseSpawnInterval = 1200, currentSpawnInterval = 1200, lastSpawnTime = 0;
         let bossActive = false, boss = null;
         
         // --- Item Effect Timers & Flags ---
         let isSlowMotionActive = false, slowMotionEndTime = 0;
+        const SLOW_MOTION_DURATION = 15000;
         let isShieldActive = false;
         let isScoreMultiplierActive = false, scoreMultiplierEndTime = 0;
         const ITEM_EFFECT_DURATION = 7000;
@@ -425,102 +447,75 @@
             }
         }
         
-        // --- BOSS CLASSES (Difficulty Adjusted) ---
+        // --- BOSS CLASSES (Difficulty Adjusted & Reworked) ---
 
         class Boss1_PollutionCore {
              constructor() {
-                this.name = "污染核心";
+                this.name = "武裝污染核心";
                 this.x = canvas.width / 2; this.y = 150;
-                this.radius = Math.min(canvas.width / 4, 90); this.phase = 1;
+                this.radius = Math.min(canvas.width / 5, 50);
                 this.timeLimit = 60000; this.startTime = Date.now();
-                this.shieldMaxHealth = 60 + level * 15; this.shieldHealth = this.shieldMaxHealth; 
+                this.maxHealth = 200 + level * 50; this.health = this.maxHealth;
                 this.shieldRotation = 0;
-                this.heartRadius = this.radius * 0.5;
-                this.heartMaxHealth = 90 + level * 20; this.heartHealth = this.heartMaxHealth; 
-                this.lanceCharge = 0; this.isLanceCharged = false;
-                this.minionSpawnInterval = 2800 - level * 100; this.lastMinionSpawn = 0; 
+                this.shieldArms = 4;
+                this.shieldArmLength = this.radius + 60;
+                this.shieldArmWidth = 20;
             }
             update(currentTime) {
-                this.shieldRotation += 0.005;
-                if (this.phase === 1) {
-                    if(currentTime - this.lastMinionSpawn > this.minionSpawnInterval) {
-                        this.spawnMinions(GameObjectType.POLLUTANT_FUME); this.lastMinionSpawn = currentTime;
-                    }
-                    if(this.shieldHealth <= 0) {
-                        this.phase = 2; createBurstParticles(this.x, this.y, '#9E9E9E', 50, 10);
-                        playSound(sounds.explosion); showTemporaryMessage("護盾已破！攻擊核心！", 2000, '#FFEB3B');
-                    }
-                } else if (this.phase === 2) {
-                     if(currentTime - this.lastMinionSpawn > this.minionSpawnInterval * 1.5) {
-                        this.spawnMinions(GameObjectType.POLLUTANT_OIL); this.lastMinionSpawn = currentTime;
-                    }
-                    if(this.heartHealth <= 0) { bossDefeated(); }
-                }
+                this.shieldRotation += 0.01;
+                if (this.health <= 0) { bossDefeated(); }
             }
             draw() {
                 ctx.save(); ctx.translate(this.x, this.y);
-                ctx.fillStyle = `rgba(40, 20, 60, ${0.7 + Math.sin(Date.now()/250)*0.2})`;
-                ctx.beginPath(); ctx.arc(0, 0, this.radius, 0, Math.PI * 2); ctx.fill();
-                if (this.phase === 1) {
-                    ctx.save(); ctx.rotate(this.shieldRotation);
-                    for (let i = 0; i < 6; i++) {
-                        const angle = (i / 6) * Math.PI * 2;
-                        ctx.fillStyle = `rgba(100,100,100, ${0.5 + (this.shieldHealth/this.shieldMaxHealth)*0.5})`;
-                        ctx.strokeStyle = '#555'; ctx.lineWidth = 2; ctx.beginPath();
-                        ctx.rect(Math.cos(angle) * this.radius * 0.7 - 20, Math.sin(angle) * this.radius * 0.7 - 20, 40, 40);
-                        ctx.fill(); ctx.stroke();
-                    }
+                
+                // Draw rotating shield arms first
+                ctx.save();
+                ctx.rotate(this.shieldRotation);
+                ctx.fillStyle = '#64748B';
+                for(let i = 0; i < this.shieldArms; i++) {
+                    const angle = (i / this.shieldArms) * Math.PI * 2;
+                    ctx.save();
+                    ctx.rotate(angle);
+                    ctx.fillRect(this.radius, -this.shieldArmWidth / 2, this.shieldArmLength, this.shieldArmWidth);
                     ctx.restore();
-                } else {
-                    const heartScale = 1 + Math.sin(Date.now() * 0.05) * 0.1;
-                    ctx.save(); ctx.scale(heartScale, heartScale);
-                    drawShape('boss_core', this.heartRadius, ctx); ctx.restore();
                 }
                 ctx.restore();
+
+                // Draw main body on top
+                ctx.fillStyle = '#E53935';
+                ctx.beginPath(); ctx.arc(0, 0, this.radius, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = '#B71C1C'; ctx.lineWidth = 4; ctx.stroke();
+                
+                ctx.restore();
             }
-            takeDamage(amount, type) {
-                if (type === 'shield' && this.phase === 1 && this.isLanceCharged) {
-                    this.shieldHealth -= amount; this.isLanceCharged = false; this.lanceCharge = 0;
-                    playSound(sounds.bossHit, 150); createBurstParticles(this.x, this.y, '#00E5FF', 30, 10);
-                } else if (type === 'heart' && this.phase === 2) {
-                    this.heartHealth -= amount; playSound(sounds.bossHit, 250);
-                     createBurstParticles(this.x, this.y, '#FF5252', 20);
-                }
+            takeDamage(amount) {
+                this.health -= amount; playSound(sounds.bossHit, 250);
+                createBurstParticles(this.x, this.y, '#FF5252', 20);
             }
              updateBossHealthDisplay() {
-                const health = this.phase === 1 ? this.shieldHealth : this.heartHealth;
-                const maxHealth = this.phase === 1 ? this.shieldMaxHealth : this.heartMaxHealth;
-                const percentage = Math.max(0, (health / maxHealth) * 100);
+                const percentage = Math.max(0, (this.health / this.maxHealth) * 100);
                 bossHealthBar.style.width = `${percentage}%`;
-                bossHealthBar.style.backgroundColor = this.phase === 1 ? '#64B5F6' : '#F44336';
-                bossHealthBar.textContent = this.phase === 1 ? `護盾: ${Math.ceil(percentage)}%` : `核心: ${Math.ceil(percentage)}%`;
-            }
-            spawnMinions(type) {
-                for (let i = 0; i < 2; i++) {
-                    const angle = Math.random() * Math.PI * 2;
-                    const spawnX = this.x + Math.cos(angle) * (this.radius + 30);
-                    const spawnY = this.y + Math.sin(angle) * (this.radius + 30);
-                    gameObjects.push(new GameObject(spawnX, spawnY, type));
-                }
+                bossHealthText.textContent = `核心: ${Math.ceil(percentage)}%`;
             }
         }
 
         class Boss2_WasteWyrm {
             constructor() {
-                this.name = "廢料巨鰻"; this.segmentCount = 6 + level; this.segments = [];
+                this.name = "腐蝕巨鰻"; this.segmentCount = 5 + level; this.segments = [];
                 this.totalHealth = 0; this.maxTotalHealth = 0;
                 this.timeLimit = 55000; this.startTime = Date.now();
                 this.head = { x: canvas.width / 2, y: 100, angle: 0, speed: 1.5 + level * 0.2 };
                 for(let i = 0; i < this.segmentCount; i++) {
-                    const health = (i === 0) ? 80 + level * 15 : 40 + level * 8;
+                    const isWeakPoint = i > 0 && i % 2 === 0;
+                    const health = isWeakPoint ? 50 + level*10 : 9999;
                     this.segments.push({
                         x: canvas.width / 2, y: 100 + i * 20,
-                        radius: (i === 0) ? 35 : 25, health: health, maxHealth: health, isHead: i === 0
+                        radius: (i === 0) ? 35 : 25, health: health, maxHealth: health, 
+                        isHead: i === 0, isWeakPoint: isWeakPoint
                     });
-                    this.totalHealth += health;
+                    if(isWeakPoint) this.totalHealth += health;
                 }
                 this.maxTotalHealth = this.totalHealth;
-                this.lastAttackTime = 0; this.attackInterval = 3200 - level * 200;
             }
             update(currentTime) {
                 this.head.angle += 0.02;
@@ -529,23 +524,21 @@
                 let leader = this.head;
                 this.segments.forEach(seg => {
                     if (seg.health > 0) {
-                        const dx = leader.x - seg.x, dy = leader.y - seg.y, dist = Math.hypot(dx, dy);
-                        const followDist = seg.isHead ? 0 : seg.radius * 1.5;
-                        if(dist > followDist) { seg.x += dx * 0.1; seg.y += dy * 0.1; }
+                        const dx = leader.x - seg.x, dy = leader.y - seg.y;
+                        const dist = Math.hypot(dx, dy);
+                        const followDist = seg.isHead ? 0 : seg.radius * 0.8;
+                        if(dist > followDist) { seg.x += dx * 0.15; seg.y += dy * 0.15; }
                         leader = seg;
                     }
                 });
-                if(currentTime - this.lastAttackTime > this.attackInterval && this.segments[0].health > 0) {
-                    const pollutant = new GameObject(this.segments[0].x, this.segments[0].y, GameObjectType.POLLUTANT_OIL);
-                    pollutant.vy = 2; gameObjects.push(pollutant); this.lastAttackTime = currentTime;
-                }
                 if (this.totalHealth <= 0) bossDefeated();
             }
             draw() {
                  this.segments.forEach((seg) => {
                      if (seg.health > 0) {
                         ctx.beginPath();
-                        ctx.fillStyle = seg.isHead ? '#795548' : '#A1887F'; ctx.strokeStyle = '#4E342E';
+                        ctx.fillStyle = seg.isWeakPoint ? '#FFC107' : (seg.isHead ? '#795548' : '#A1887F'); 
+                        ctx.strokeStyle = seg.isWeakPoint ? '#FF8F00' : '#4E342E';
                         ctx.lineWidth = 3; ctx.arc(seg.x, seg.y, seg.radius, 0, Math.PI * 2);
                         ctx.fill(); ctx.stroke();
                         if(seg.isHead){
@@ -557,10 +550,10 @@
             }
             takeDamage(amount, segmentIndex) {
                 const seg = this.segments[segmentIndex];
-                if(seg && seg.health > 0) {
+                if(seg && seg.health > 0 && seg.isWeakPoint) {
                     seg.health -= amount; this.totalHealth -= amount;
                     playSound(sounds.bossHit, 300 + segmentIndex * 20);
-                    createBurstParticles(seg.x, seg.y, '#D7CCC8', 15);
+                    createBurstParticles(seg.x, seg.y, '#FFD54F', 15);
                     if(seg.health <= 0) {
                         createBurstParticles(seg.x, seg.y, '#FFFFFF', 30); playSound(sounds.explosion);
                     }
@@ -569,15 +562,14 @@
             updateBossHealthDisplay() {
                 const percentage = Math.max(0, (this.totalHealth / this.maxTotalHealth) * 100);
                 bossHealthBar.style.width = `${percentage}%`;
-                bossHealthBar.style.backgroundColor = '#795548';
-                bossHealthBar.textContent = `巨鰻: ${Math.ceil(percentage)}%`;
+                bossHealthText.textContent = `巨鰻弱點: ${Math.ceil(percentage)}%`;
             }
         }
         
         class Boss3_SmogSpecter {
             constructor() {
-                this.name = "迷霧怨靈"; this.specters = [];
-                this.maxHealth = 160 + level * 40; this.health = this.maxHealth;
+                this.name = "虛實怨靈"; this.specters = [];
+                this.maxHealth = 120 + level * 25; this.health = this.maxHealth;
                 this.timeLimit = 65000; this.startTime = Date.now();
                 this.smogOverlayAlpha = 0; this.lastTeleportTime = 0; this.teleportInterval = 5000;
                 this.lastSmogAttackTime = 0; this.smogAttackInterval = 8000; this.spawnSpecters();
@@ -607,7 +599,7 @@
             draw() {
                  this.specters.forEach(s => {
                     ctx.save(); ctx.globalAlpha = s.alpha;
-                    const flicker = s.isReal ? 0.7 + Math.sin(Date.now() / 150) * 0.3 : 0.5;
+                    const flicker = s.isReal ? 1.0 : 0.4;
                     ctx.fillStyle = `rgba(142, 36, 170, ${flicker})`; ctx.strokeStyle = '#4A148C';
                     drawShape('fume', s.radius, ctx, false); ctx.restore();
                  });
@@ -629,8 +621,7 @@
             updateBossHealthDisplay() {
                 const percentage = Math.max(0, (this.health / this.maxHealth) * 100);
                 bossHealthBar.style.width = `${percentage}%`;
-                bossHealthBar.style.backgroundColor = '#9C27B0';
-                bossHealthBar.textContent = `怨靈: ${Math.ceil(percentage)}%`;
+                bossHealthText.textContent = `怨靈: ${Math.ceil(percentage)}%`;
             }
         }
         
@@ -644,7 +635,7 @@
                 fontSize: 'clamp(1.5rem, 5vw, 2.2rem)', fontWeight: 'bold', color: color,
                 backgroundColor: 'rgba(0,0,0,0.75)', padding: '25px', borderRadius: '15px',
                 zIndex: '200', textShadow: '2px 2px 5px black', boxShadow: '0 0 20px rgba(255,255,255,0.3)',
-                textAlign: 'center'
+                textAlign: 'center', pointerEvents: 'none'
             });
             gameContainer.appendChild(msgElement);
             setTimeout(() => { if (gameContainer.contains(msgElement)) gameContainer.removeChild(msgElement); }, duration);
@@ -681,16 +672,18 @@
 
                 if (bossActive && boss) {
                     boss.update(currentTime);
-                    boss.draw();
-                    boss.updateBossHealthDisplay();
+                    if (boss) {
+                        boss.draw();
+                        boss.updateBossHealthDisplay();
 
-                    const elapsedTime = Date.now() - boss.startTime;
-                    const remainingTime = Math.max(0, boss.timeLimit - elapsedTime);
-                    const timerPercentage = (remainingTime / boss.timeLimit) * 100;
-                    bossTimerBar.style.width = `${timerPercentage}%`;
-                    bossTimerBar.textContent = `時間: ${Math.ceil(remainingTime / 1000)}s`;
-                    if(remainingTime <= 0) {
-                        handleBossTimeout();
+                        const elapsedTime = Date.now() - boss.startTime;
+                        const remainingTime = Math.max(0, boss.timeLimit - elapsedTime);
+                        const timerPercentage = (remainingTime / boss.timeLimit) * 100;
+                        bossTimerBar.style.width = `${timerPercentage}%`;
+                        bossTimerText.textContent = `時間: ${Math.ceil(remainingTime / 1000)}s`;
+                        if(remainingTime <= 0) {
+                            handleBossTimeout();
+                        }
                     }
                 }
 
@@ -744,7 +737,6 @@
             gameContainer.style.filter = `brightness(0.9)`;
             bossHealthContainer.style.display = 'block';
             bossTimerContainer.style.display = 'block';
-            // Reset energy so the special attack needs to be earned again
             energy = 0;
             updateUI();
         }
@@ -770,6 +762,22 @@
             showTemporaryMessage(`魔王已淨化！準備挑戰下一關！`, 3000, '#00E676');
         }
         
+        function lineCircleIntersection(p1, p2, circle) {
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const lenSq = dx * dx + dy * dy;
+            if (lenSq === 0) {
+                const distSq = Math.pow(circle.x - p1.x, 2) + Math.pow(circle.y - p1.y, 2);
+                return distSq < circle.radius * circle.radius;
+            }
+            const t = ((circle.x - p1.x) * dx + (circle.y - p1.y) * dy) / lenSq;
+            const tClamped = Math.max(0, Math.min(1, t));
+            const closestX = p1.x + tClamped * dx;
+            const closestY = p1.y + tClamped * dy;
+            const distSq = Math.pow(circle.x - closestX, 2) + Math.pow(circle.y - closestY, 2);
+            return distSq < circle.radius * circle.radius;
+        }
+
         function handleSwipeInteraction(x, y) {
             if (bossActive && boss instanceof Boss3_SmogSpecter && boss.smogOverlayAlpha > 0) {
                 boss.smogOverlayAlpha -= 0.05;
@@ -777,23 +785,37 @@
                 return;
             }
 
+            const p2 = { x, y };
+            const p1 = swipePath.length > 1 ? swipePath[swipePath.length - 2] : p2;
+
             if (bossActive && boss) {
-                if (boss instanceof Boss1_PollutionCore) {
-                    const distToBossCenter = Math.hypot(x - boss.x, y - boss.y);
-                    if (boss.phase === 1 && distToBossCenter < boss.radius) { boss.takeDamage(25 * level, 'shield'); } 
-                    else if (boss.phase === 2 && distToBossCenter < boss.heartRadius) { boss.takeDamage(10 * level, 'heart'); }
+                 if (boss instanceof Boss1_PollutionCore) {
+                    const angle = Math.atan2(y - boss.y, x - boss.x);
+                    let isBlocked = false;
+                    for (let i = 0; i < boss.shieldArms; i++) {
+                        const armAngle = (i / boss.shieldArms) * Math.PI * 2 + boss.shieldRotation;
+                        const angleDiff = Math.abs(angle - armAngle) % (Math.PI * 2);
+                        const armWidthAngle = Math.atan2(boss.shieldArmWidth / 2, boss.radius);
+                        if(Math.min(angleDiff, Math.PI * 2 - angleDiff) < armWidthAngle) {
+                            isBlocked = true;
+                            break;
+                        }
+                    }
+                    if (!isBlocked && Math.hypot(x-boss.x, y-boss.y) < boss.radius) {
+                        boss.takeDamage(15);
+                    }
                 } else if (boss instanceof Boss2_WasteWyrm) {
                     for(let i = 0; i < boss.segments.length; i++) {
                         const seg = boss.segments[i];
-                        if(seg.health > 0 && Math.hypot(x - seg.x, y - seg.y) < seg.radius) {
+                        if(seg.health > 0 && lineCircleIntersection(p1, p2, seg)) {
                             boss.takeDamage(20, i);
-                            break;
+                            break; 
                         }
                     }
                 } else if (boss instanceof Boss3_SmogSpecter) {
                     for(let i = 0; i < boss.specters.length; i++) {
                         const s = boss.specters[i];
-                        if(!s.isHit && Math.hypot(x - s.x, y - s.y) < s.radius) {
+                        if(!s.isHit && lineCircleIntersection(p1, p2, s)) {
                             boss.takeDamage(30, i);
                             break;
                         }
@@ -804,19 +826,15 @@
             for (let i = gameObjects.length - 1; i >= 0; i--) {
                 const obj = gameObjects[i];
                 if (obj.isHit) continue;
-                if (Math.hypot(x - obj.x, y - obj.y) < obj.radius) {
+                if (lineCircleIntersection(p1, p2, obj)) {
                     obj.isHit = true;
                     if (POLLUTANT_TYPES.includes(obj.type)) {
                         addScore(10); addEnergy(5); playSound(sounds.clean, 400 + Math.random() * 200);
                         createBurstParticles(obj.x, obj.y, '#76FF03', 15, 8);
-                        if (bossActive && boss instanceof Boss1_PollutionCore && boss.phase === 1) {
-                            boss.lanceCharge = Math.min(100, boss.lanceCharge + 15);
-                            if (boss.lanceCharge >= 100) boss.isLanceCharged = true;
-                        }
-                    } else if (PROTECTED_TYPES.includes(obj.type)) {
-                        handleMistake(obj.x, obj.y);
                     } else if (ITEM_TYPES.includes(obj.type)) {
                         activateItemEffect(obj.type, {x, y});
+                    } else if (PROTECTED_TYPES.includes(obj.type)) {
+                        handleMistake(obj.x, obj.y);
                     }
                     return;
                 }
@@ -830,12 +848,16 @@
             playSound(sounds.powerUp, 600, 0.6);
             showTemporaryMessage("淨化衝擊！", 1500, '#FFF59D');
 
-            if (boss instanceof Boss1_PollutionCore && boss.phase === 2) { boss.takeDamage(100, 'heart'); }
-            else if (boss instanceof Boss2_WasteWyrm) { boss.takeDamage(150, 0); } 
+            if (boss instanceof Boss1_PollutionCore) { boss.takeDamage(50); }
+            else if (boss instanceof Boss2_WasteWyrm) {
+                 for(let i = 0; i < boss.segments.length; i++) {
+                     if(boss.segments[i].isWeakPoint) boss.takeDamage(75, i);
+                 }
+            } 
             else if (boss instanceof Boss3_SmogSpecter) {
                 const realSpecterIndex = boss.specters.findIndex(s => s.isReal);
                 if (realSpecterIndex !== -1) {
-                    boss.takeDamage(100, realSpecterIndex);
+                    boss.takeDamage(80, realSpecterIndex);
                 }
             }
             updateUI();
@@ -858,52 +880,30 @@
         function playSound(soundNode, freqOrNull, duration = 0.1) {
             if (Tone.context.state !== 'running') Tone.start().catch(e => console.warn("Tone.start() failed:", e));
             try {
+                if(soundNode.state === "started") return;
                 if (soundNode.name === "NoiseSynth" || soundNode.name === "MembraneSynth") soundNode.triggerAttackRelease(duration);
                 else if (freqOrNull !== null) soundNode.triggerAttackRelease(freqOrNull, duration);
-            } catch (e) { console.warn("Error playing sound:", e); }
+            } catch (e) { /* console.warn("Error playing sound:", e); */ }
         }
         
         function spawnGameObject() {
             let numToSpawn = Math.min(4, 1 + Math.floor(score / 500));
             for (let k = 0; k < numToSpawn; k++) {
                 let type;
-                if (Math.random() < ITEM_SPAWN_CHANCE) { type = ITEM_TYPES[Math.floor(Math.random() * ITEM_TYPES.length)]; } 
-                else { type = Math.random() < 0.6 ? POLLUTANT_TYPES[Math.floor(Math.random() * POLLUTANT_TYPES.length)] : PROTECTED_TYPES[Math.floor(Math.random() * PROTECTED_TYPES.length)]; }
+                if (Math.random() < ITEM_SPAWN_CHANCE) { type = ITEM_TYPES.filter(t => t !== GameObjectType.BOSS1_CELL)[Math.floor(Math.random() * (ITEM_TYPES.length -1))]; } 
+                else { type = Math.random() < 0.6 ? POLLUTANT_TYPES.filter(t=> t !== GameObjectType.BOSS1_MINION)[Math.floor(Math.random() * (POLLUTANT_TYPES.length - 1))] : PROTECTED_TYPES[Math.floor(Math.random() * PROTECTED_TYPES.length)]; }
                 
-                const edge = Math.floor(Math.random() * 4);
-                let x, y;
-                const spawnOffset = 60;
-
-                switch (edge) {
-                    case 0: x = Math.random() * canvas.width; y = canvas.height + spawnOffset; break; // bottom
-                    case 1: x = -spawnOffset; y = Math.random() * canvas.height; break; // left
-                    case 2: x = canvas.width + spawnOffset; y = Math.random() * canvas.height; break; // right
-                    case 3: x = Math.random() * canvas.width; y = -spawnOffset; break; // top
-                }
+                const x = Math.random() * canvas.width;
+                const y = -60;
 
                 const newObj = new GameObject(x, y, type);
                 
-                const speedFactor = 0.4 + (energy / maxEnergy) * 1.2;
-                const baseSpeed = (newObj.isItem ? 2.5 : 3.5) * gameSpeedMultiplier * speedFactor;
+                const speedFactor = 0.15 + (energy / maxEnergy) * 1.0;
+                const baseSpeed = (newObj.isItem ? 1.0 : 1.5) * gameSpeedMultiplier * speedFactor;
                 
-                switch (edge) {
-                    case 0: 
-                        newObj.vy = -(Math.random() * 0.5 + 0.8) * baseSpeed;
-                        newObj.vx = (Math.random() - 0.5) * baseSpeed;
-                        break;
-                    case 1: 
-                        newObj.vx = (Math.random() * 0.5 + 0.8) * baseSpeed;
-                        newObj.vy = (Math.random() - 0.5) * baseSpeed * 0.5;
-                        break;
-                    case 2:
-                        newObj.vx = -(Math.random() * 0.5 + 0.8) * baseSpeed;
-                        newObj.vy = (Math.random() - 0.5) * baseSpeed * 0.5;
-                        break;
-                    case 3: 
-                        newObj.vy = (Math.random() * 0.5 + 0.8) * baseSpeed * 0.6;
-                        newObj.vx = (Math.random() - 0.5) * baseSpeed;
-                        break;
-                }
+                newObj.vy = (Math.random() * 0.4 + 0.6) * baseSpeed;
+                newObj.vx = (Math.random() - 0.5) * baseSpeed;
+                
                 gameObjects.push(newObj);
             }
         }
@@ -911,13 +911,17 @@
         function addScore(points) { score += points * (isScoreMultiplierActive ? 2 : 1); gameSpeedMultiplier = Math.min(2.5, 1 + score / 1000); currentSpawnInterval = Math.max(300, baseSpawnInterval - (score / 20)); }
         
         function addEnergy(amount) {
-            if (energy >= maxEnergy && bossActive) return; // Prevent adding more if bar is full for special attack
+            if (energy >= maxEnergy && bossActive) return; 
             const oldEnergy = energy;
             energy = Math.min(energy + amount, maxEnergy);
             
-            if (oldEnergy < maxEnergy && energy >= maxEnergy && !bossActive && gameState === 'playing') {
+            if (oldEnergy < maxEnergy && energy >= maxEnergy) {
                  playSound(sounds.powerUp, 400);
-                 triggerBossFight();
+                 if (!bossActive && gameState === 'playing') {
+                    triggerBossFight();
+                 } else if(bossActive) {
+                    activateSpecialAttack();
+                 }
             }
             updateUI();
         }
@@ -926,7 +930,7 @@
             scoreDisplay.textContent = `分數: ${score}`; livesDisplay.textContent = `生命: ${lives}`;
             const energyPercentage = (energy / maxEnergy) * 100;
             energyBar.style.width = `${energyPercentage}%`;
-            energyBar.textContent = energyPercentage >= 15 ? `能量: ${Math.floor(energyPercentage)}%` : '';
+            energyText.textContent = energyPercentage >= 15 ? `能量: ${Math.floor(energyPercentage)}%` : '';
             energyBar.classList.toggle('full', energyPercentage >= 100);
             shieldStatus.style.display = isShieldActive ? 'flex' : 'none';
             multiplierStatus.style.display = isScoreMultiplierActive ? 'flex' : 'none';
@@ -941,7 +945,7 @@
             const currentTime = Date.now();
             playSound(sounds.itemCollect, 600); createBurstParticles(position.x, position.y, '#FFD700', 25, 10);
             switch (itemType) {
-                case GameObjectType.ITEM_SLOW_MOTION: isSlowMotionActive = true; slowMotionEndTime = currentTime + ITEM_EFFECT_DURATION; showTemporaryMessage("時間緩緩！", 2000, '#B0BEC5'); break;
+                case GameObjectType.ITEM_SLOW_MOTION: isSlowMotionActive = true; slowMotionEndTime = currentTime + SLOW_MOTION_DURATION; showTemporaryMessage("時間緩緩！", 2000, '#B0BEC5'); break;
                 case GameObjectType.ITEM_SHIELD: isShieldActive = true; showTemporaryMessage("守護光盾！", 2000, '#4DB6AC'); break;
                 case GameObjectType.ITEM_SCORE_MULTIPLIER: isScoreMultiplierActive = true; scoreMultiplierEndTime = currentTime + ITEM_EFFECT_DURATION; showTemporaryMessage("雙倍積分！", 2000, '#FFD54F'); break;
                 case GameObjectType.ITEM_ENERGY_BOOST: addEnergy(40); showTemporaryMessage("能量補充！", 1500, '#FFEE58'); break;
@@ -958,10 +962,9 @@
         
         function drawSwipeTrail() {
             if (swipePath.length < 2) return;
-            const isCharged = bossActive && boss instanceof Boss1_PollutionCore && boss.isLanceCharged;
-            const trailColor = isCharged ? `rgba(0, 255, 255, 0.8)` : `rgba(173, 216, 230, 0.7)`;
-            ctx.strokeStyle = trailColor; ctx.lineWidth = isCharged ? 18 : 12; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-            ctx.shadowColor = trailColor; ctx.shadowBlur = 15; ctx.beginPath();
+            ctx.strokeStyle = `rgba(173, 216, 230, 0.7)`;
+            ctx.lineWidth = 12; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            ctx.shadowColor = `rgba(173, 216, 230, 0.7)`; ctx.shadowBlur = 15; ctx.beginPath();
             ctx.moveTo(swipePath[0].x, swipePath[0].y);
             for (let i = 1; i < swipePath.length; i++) { ctx.lineTo(swipePath[i].x, swipePath[i].y); }
             ctx.stroke(); ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
@@ -981,6 +984,7 @@
         function handleTouchMove(e) { if (!isSwiping) return; e.preventDefault(); const touch = e.touches[0]; const rect = canvas.getBoundingClientRect(); const newPoint = { x: touch.clientX - rect.left, y: touch.clientY - rect.top }; swipePath.push(newPoint); if(swipePath.length > 20) swipePath.shift(); handleSwipeInteraction(newPoint.x, newPoint.y); }
         function handleTouchEnd(e) { isSwiping = false; }
         
+        gameContainer.addEventListener('contextmenu', e => e.preventDefault());
         canvas.addEventListener('mousedown', handleMouseDown);
         canvas.addEventListener('mousemove', handleMouseMove);
         document.addEventListener('mouseup', handleMouseUp);
@@ -998,12 +1002,7 @@
         quitButton.addEventListener('click', () => { switchScreen(startScreen); initGame(); gameState = 'start'; if (animationFrameId) cancelAnimationFrame(animationFrameId); });
         howToPlayButton.addEventListener('click', () => switchScreen(howToPlayScreen));
         closeHowToPlayButton.addEventListener('click', () => switchScreen(startScreen));
-        energyBarContainer.addEventListener('click', () => { 
-            if (gameState === 'bossFight') {
-                activateSpecialAttack();
-            }
-        });
-
+        
         function drawShape(type, radius, c, isIcon) {
             c.beginPath(); const lineWidth = isIcon ? 1.5 : 2.5; const bossCoreLineWidth = isIcon ? 2 : 4;
             switch (type) {
@@ -1045,6 +1044,13 @@
                     c.fillStyle = '#FFEE58'; c.strokeStyle = '#FDD835'; c.lineWidth = isIcon ? 1.5 : 2;
                     c.moveTo(-radius * 0.2, -radius); c.lineTo(radius * 0.3, -radius * 0.1); c.lineTo(0, -radius * 0.1);
                     c.lineTo(radius * 0.2, radius); c.lineTo(-radius * 0.3, -radius * 0.2); c.lineTo(0, -radius * 0.2); c.closePath(); c.fill(); c.stroke(); break;
+                case GameObjectType.BOSS1_MINION:
+                     c.fillStyle = '#AB47BC'; c.strokeStyle = '#6A1B9A'; c.lineWidth = lineWidth;
+                     for (let i = 0; i < 6; i++) { c.lineTo(Math.cos(i / 3 * Math.PI) * radius, Math.sin(i / 3 * Math.PI) * radius * 0.5); }
+                     c.closePath(); c.fill(); c.stroke(); break;
+                case GameObjectType.BOSS1_CELL:
+                     c.fillStyle = '#FFF176'; c.strokeStyle = '#FDD835'; c.lineWidth = lineWidth;
+                     c.rect(-radius*0.5, -radius*0.5, radius, radius); c.fill(); c.stroke(); break;
                 default: c.fillStyle = 'magenta'; c.arc(0,0,radius,0,Math.PI*2); c.fill(); break;
             }
         }
