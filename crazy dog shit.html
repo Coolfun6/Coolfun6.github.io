@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>戰鬥雞：無盡征途</title>
+    <title>戰鬥雞：無盡征途 (美術強化版)</title>
     <style>
         body {
             display: flex;
@@ -102,7 +102,7 @@
         const PLAYER_SPEED = 4;
         const ENEMY_BULLET_MAX_RANGE = canvas.width * 0.7;
 
-        // --- Web Audio API 音效設定 (與前版相同) ---
+        // --- Web Audio API 音效設定 ---
         let audioCtx;
         let masterGainNode;
         try {
@@ -216,7 +216,7 @@
             oscillator.stop(audioCtx.currentTime + duration + 0.01);
         }
 
-        // --- 武器系統 (與前版相同) ---
+        // --- 武器系統 ---
         const WEAPON_TYPES = {
             'peck_cannon': { name: '小雞啄米槍', fireRate: 300, bulletSpeed: 8, bulletRadius: 5, bulletColor: '#FFFF00', damage: 10, pattern: 'single', ammo: Infinity },
             'feather_spread': { name: '羽毛散射砲', fireRate: 600, bulletSpeed: 7, bulletRadius: 4, bulletColor: '#ADD8E6', damage: 7, pattern: 'triple_spread', ammo: 50, maxAmmo: 50 },
@@ -304,7 +304,6 @@
                 this.updateWeaponUI();
             },
             
-            // --- ★ MODIFIED: 技能函式 (智慧鎖定) ---
             useSkill: function() {
                 if (gameRunning && !gameOver && skillReady) {
                     skillReady = false;
@@ -313,17 +312,14 @@
                     playSound('skill_use');
 
                     let target = null;
-                    // 優先鎖定魔王
                     if (activeBoss) {
                         target = activeBoss;
                     } else {
-                        // 尋找最近的敵人
                         let closestEnemy = null;
                         let minDistance = Infinity;
 
                         enemies.forEach(enemy => {
                             const screenX = enemy.worldX - cameraX;
-                            // 只考慮畫面內的敵人
                             if (screenX > -enemy.width && screenX < canvas.width) {
                                 const dx = (enemy.worldX + enemy.width / 2) - (this.worldX + this.width / 2);
                                 const dy = (enemy.worldY + enemy.height / 2) - (this.worldY + this.height / 2);
@@ -340,21 +336,18 @@
                     const bulletOriginX = this.worldX + this.width / 2;
                     const bulletOriginY = this.worldY + this.height / 2;
 
-                    // 發射5顆強力子彈
                     for (let i = 0; i < 5; i++) {
                         setTimeout(() => {
                             let speedX, speedY;
                             const bulletSpeed = 10;
 
                             if (target) {
-                                // 如果有目標，朝目標發射
                                 const targetCenterX = target.worldX + target.width / 2;
                                 const targetCenterY = target.worldY + target.height / 2;
                                 const angle = Math.atan2(targetCenterY - bulletOriginY, targetCenterX - bulletOriginX);
                                 speedX = Math.cos(angle) * bulletSpeed;
                                 speedY = Math.sin(angle) * bulletSpeed;
                             } else {
-                                // 如果沒有目標，朝前方發射
                                 speedX = (this.facingRight ? 1 : -1) * bulletSpeed;
                                 speedY = 0;
                             }
@@ -362,14 +355,14 @@
                             this.bullets.push({
                                 worldX: bulletOriginX,
                                 worldY: bulletOriginY,
-                                radius: 8, // 技能子彈更大
+                                radius: 8,
                                 speedX: speedX,
                                 speedY: speedY,
-                                color: '#FF4500', // 橘紅色，更具威力感
+                                color: '#FF4500',
                                 isSkillBullet: true,
-                                damage: 30 // 技能子彈傷害更高
+                                damage: 30
                             });
-                        }, i * 120); // 每顆子彈間隔發射
+                        }, i * 120);
                     }
 
                     setTimeout(() => {
@@ -429,7 +422,6 @@
             draw: function() { 
                 const screenX = this.worldX - cameraX;
                 if (this.invincible && Math.floor(Date.now() / 100) % 2 === 0) {
-                    // 無敵時閃爍
                 } else {
                     ctx.fillStyle = this.color;
                     ctx.fillRect(screenX + 5, this.worldY + 5, this.width - 10, this.height - 10);
@@ -770,6 +762,24 @@
             worldGeneratedUpToX = Math.max(worldGeneratedUpToX, endX);
         }
 
+        // --- ★ NEW: 魔王戰場生成函式 ---
+        function generateBossArena() {
+            // 清除目前視窗內的所有平台
+            platforms = platforms.filter(p => p.worldX + p.width < cameraX || p.worldX > cameraX + canvas.width);
+            
+            // 創建固定的魔王戰平台
+            const arenaStartX = cameraX;
+            // 底部大平台
+            platforms.push(new Platform(arenaStartX - 50, canvas.height - 60, canvas.width + 100, 60, 'stone'));
+            // 左中平台
+            platforms.push(new Platform(arenaStartX + 100, canvas.height - 180, 150, 20, 'stone'));
+            // 右中平台
+            platforms.push(new Platform(arenaStartX + canvas.width - 250, canvas.height - 180, 150, 20, 'stone'));
+             // 中間高平台
+            platforms.push(new Platform(arenaStartX + canvas.width/2 - 100, canvas.height - 280, 200, 20, 'stone'));
+        }
+
+
         function manageLevelGeneration() {
             if (bossActive) return;
             if (cameraX + canvas.width * 1.2 > worldGeneratedUpToX) { generateSegment(worldGeneratedUpToX); }
@@ -801,14 +811,13 @@
 
         function updateCamera() {
             const targetCamX = player.worldX - canvas.width / 3;
-            if (!bossActive) { cameraX += (targetCamX - cameraX) * 0.1; }
-            else if (activeBoss) {
-                const bossArenaCenterX = Math.min(activeBoss.worldX + activeBoss.width/2, player.worldX + canvas.width * 0.8);
-                const desiredCameraX = bossArenaCenterX - canvas.width / 2;
+            if (!bossActive) { 
+                cameraX += (targetCamX - cameraX) * 0.1; 
+            } else if (activeBoss) {
+                // 魔王戰時，鏡頭鎖定在戰場中心
+                const arenaCenterX = activeBoss.initialArenaX + canvas.width / 2;
+                const desiredCameraX = arenaCenterX - canvas.width / 2;
                 cameraX += (desiredCameraX - cameraX) * 0.05;
-                if (activeBoss.worldX < cameraX + 50) {
-                    cameraX = activeBoss.worldX - 50;
-                }
             }
             if (cameraX < 0) cameraX = 0;
         }
@@ -888,9 +897,15 @@
             });
         }
 
+        // --- ★ MODIFIED: 遊戲主更新函式 ---
         function update() {
             if (!gameRunning || gameOver) return;
-            handleInput(); player.update(); manageLevelGeneration();
+            handleInput(); player.update(); 
+            
+            if (!bossActive) {
+                manageLevelGeneration();
+            }
+
             enemies.forEach(enemy => enemy.update()); if (activeBoss) activeBoss.update();
             updateCamera(); checkCollisions();
 
@@ -898,21 +913,28 @@
             stageDisplay.textContent = `大關卡: ${currentMajorStage > MAX_STAGES ? MAX_STAGES : currentMajorStage}/${MAX_STAGES}`;
             progressDisplay.textContent = `進度: ${Math.floor(player.worldX / 10)}m`;
 
+            // --- ★ MODIFIED: 魔王觸發邏輯 ---
             if (!bossActive && !gameWon && currentMajorStage <= MAX_STAGES && player.worldX >= nextBossSpawnX) {
                 bossActive = true; 
-                enemies = enemies.filter(e => e.worldX < cameraX || e.worldX > cameraX + canvas.width);
+                enemies = []; // 清空所有小怪
+                
+                generateBossArena(); // 生成魔王戰場
                 
                 const bossData = BOSS_TYPES[currentMajorStage - 1];
                 const bossHealth = bossData.health + currentMajorStage * 50;
                 
+                // 將魔王生成在戰場右側
+                const spawnX = cameraX + canvas.width - bossData.width - 100;
+                const spawnY = canvas.height - 60 - bossData.height;
+
                 activeBoss = new Enemy(
-                    cameraX + canvas.width - bossData.width - 50,
-                    canvas.height - bossData.height - 50,
+                    spawnX, spawnY,
                     bossData.width, bossData.height,
                     bossData.color, bossHealth, bossData.type,
                     2000 - currentMajorStage * 150,
                     'static', bossData.damage
                 );
+                activeBoss.initialArenaX = cameraX; // 記錄戰場起始位置給鏡頭用
 
                 messageDisplay.textContent = `魔王來襲: ${bossData.name}！`;
                 setTimeout(()=> messageDisplay.textContent = "", 3000);
