@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>戰鬥雞：無盡征途</title>
+    <title>戰鬥雞：無盡征途 (地獄+)</title>
     <style>
         body {
             display: flex;
@@ -21,6 +21,21 @@
             border: 2px solid #fff;
             background-color: #87CEEB;
             image-rendering: pixelated; /* 保持像素風格 */
+            position: relative;
+        }
+        #gameContainer {
+            position: relative;
+        }
+        #damageOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 0, 0, 0.5);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.1s ease-in-out;
         }
         #gameUI {
             margin-top: 10px;
@@ -54,7 +69,7 @@
     </style>
 </head>
 <body>
-    <h1>戰鬥雞：無盡征途</h1>
+    <h1>戰鬥雞：無盡征途 (地獄+)</h1>
     <div id="gameUI">
         <span id="score">分數: 0</span>
         <span id="stage">大關卡: 1</span>
@@ -63,7 +78,10 @@
         <span id="weapon">武器: 小雞啄米槍</span>
         <span id="skillStatus">技能: 就緒! (S)</span>
     </div>
-    <canvas id="gameCanvas" width="800" height="400"></canvas>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="800" height="400"></canvas>
+        <div id="damageOverlay"></div>
+    </div>
     <div id="controlsInfo">
         ← →/A D: 移動 | ↑/W: 跳躍 (可二段跳) | 空白鍵: 射擊 | S: 技能 | Q/E: 切換武器
     </div>
@@ -74,6 +92,7 @@
         // --- 基本設定 ---
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
+        const damageOverlay = document.getElementById('damageOverlay');
         const scoreDisplay = document.getElementById('score');
         const stageDisplay = document.getElementById('stage');
         const progressDisplay = document.getElementById('progress');
@@ -93,10 +112,16 @@
         let gameWon = false;
         let cameraX = 0;
         let worldGeneratedUpToX = 0;
+        let gameTime = 0;
+        const TIME_SCALE = 0.1;
+        let stars = [];
+        let clouds = [];
+        let muzzleFlashes = [];
+        let environmentalHazards = [];
 
         // --- 物理與玩家常數 ---
         const GRAVITY = 0.6;
-        const JUMP_FORCE = -12; // 調整跳躍力
+        const JUMP_FORCE = -12;
         const PLAYER_WIDTH = 40;
         const PLAYER_HEIGHT = 40;
         const PLAYER_SPEED = 4;
@@ -146,7 +171,7 @@
                     break;
                 case 'player_jump':
                     oscillator.type = 'sine';
-                    freq1 = options.isDoubleJump ? 392 : 261; // 第二段跳音高更高
+                    freq1 = options.isDoubleJump ? 392 : 261;
                     freq2 = options.isDoubleJump ? 587 : 523;
                     duration = 0.12; vol = 0.2;
                     oscillator.frequency.setValueAtTime(freq1, audioCtx.currentTime);
@@ -200,7 +225,7 @@
                     break;
                 case 'boss_die':
                     oscillator.type = 'sawtooth';
-                    freq1 = 250; freq2 = 30; duration = 1.0; vol = 0.4; // 更長更戲劇化
+                    freq1 = 250; freq2 = 30; duration = 1.0; vol = 0.4;
                     oscillator.frequency.setValueAtTime(freq1, audioCtx.currentTime);
                     oscillator.frequency.exponentialRampToValueAtTime(freq2, audioCtx.currentTime + duration);
                     gainNode.gain.setValueAtTime(vol, audioCtx.currentTime);
@@ -232,11 +257,11 @@
         
         // --- 魔王皮膚設定 ---
         const BOSS_TYPES = [
-            { name: '高麗菜國王', type: 'boss_cabbage_king', health: 250, width: 70, height: 70, color: '#5DBB63', damage: 15 },
-            { name: '番茄領主', type: 'boss_tomato_lord', health: 400, width: 80, height: 80, color: '#D44A4A', damage: 20 },
-            { name: '玉米將軍', type: 'boss_corn_general', health: 600, width: 60, height: 100, color: '#F8D568', damage: 25 },
-            { name: '洋蔥霸主', type: 'boss_onion_overlord', health: 800, width: 90, height: 90, color: '#B264C3', damage: 30 },
-            { name: '南瓜大帝', type: 'boss_pumpkin_emperor', health: 1200, width: 100, height: 100, color: '#F37021', damage: 35 }
+            { name: '高麗菜國王', type: 'boss_cabbage_king', health: 350, width: 70, height: 70, color: '#5DBB63', damage: 15, specialCooldown: 8000 },
+            { name: '番茄領主', type: 'boss_tomato_lord', health: 500, width: 80, height: 80, color: '#D44A4A', damage: 20, specialCooldown: 9000 },
+            { name: '玉米將軍', type: 'boss_corn_general', health: 750, width: 60, height: 100, color: '#F8D568', damage: 25, specialCooldown: 7000 },
+            { name: '洋蔥霸主', type: 'boss_onion_overlord', health: 1000, width: 90, height: 90, color: '#B264C3', damage: 30, specialCooldown: 10000 },
+            { name: '南瓜大帝', type: 'boss_pumpkin_emperor', health: 1500, width: 100, height: 100, color: '#F37021', damage: 35, specialCooldown: 8000 }
         ];
 
         // --- 玩家物件 ---
@@ -269,15 +294,24 @@
                 if (weaponStats.ammo !== Infinity && currentAmmoForWeapon <= 0) {
                     messageDisplay.textContent = `${weaponStats.name} 沒子彈了!`;
                     setTimeout(()=> messageDisplay.textContent = "", 1500);
-                    playSound('player_shoot', {freq1: 100, duration: 0.2}); // 空槍音效
+                    playSound('player_shoot', {freq1: 100, duration: 0.2});
                     return;
                 }
 
                 this.lastShotTime = now;
                 playSound('player_shoot');
                 const bulletY = this.worldY + this.height / 2 - weaponStats.bulletRadius;
-                const bulletXOffset = this.facingRight ? this.width : 0;
+                
+                const muzzleXOffset = this.facingRight ? this.width + 10 : -10;
+                const muzzleYOffset = this.height * 0.55;
+                muzzleFlashes.push({
+                    x: this.worldX + muzzleXOffset,
+                    y: this.worldY + muzzleYOffset,
+                    alpha: 1
+                });
 
+                const bulletXOffset = this.facingRight ? this.width : 0;
+                
                 if (weaponStats.pattern === 'single' || weaponStats.pattern === 'single_big') {
                     this.bullets.push({
                         worldX: this.worldX + bulletXOffset, worldY: bulletY,
@@ -438,6 +472,48 @@
                     ctx.beginPath(); ctx.moveTo(beakBaseX, this.worldY + this.height * 0.45);
                     ctx.lineTo(beakTipX, this.worldY + this.height * 0.55);
                     ctx.lineTo(beakBaseX, this.worldY + this.height * 0.65); ctx.closePath(); ctx.fill();
+                    
+                    const currentWeaponKey = this.weapons[this.currentWeaponIndex];
+                    const weaponY = this.worldY + this.height * 0.5;
+                    ctx.fillStyle = '#666';
+                    if (this.facingRight) {
+                        const weaponX = screenX + this.width - 10;
+                        switch(currentWeaponKey) {
+                            case 'peck_cannon':
+                                ctx.fillRect(weaponX, weaponY, 20, 8);
+                                break;
+                            case 'feather_spread':
+                                ctx.fillRect(weaponX, weaponY - 4, 25, 16);
+                                ctx.fillRect(weaponX + 25, weaponY - 2, 5, 12);
+                                break;
+                            case 'egg_launcher':
+                                ctx.fillStyle = '#4a4a4a';
+                                ctx.fillRect(weaponX - 5, weaponY - 8, 30, 16);
+                                ctx.beginPath();
+                                ctx.arc(weaponX + 25, weaponY, 10, 0, Math.PI * 2);
+                                ctx.fill();
+                                break;
+                        }
+                    } else {
+                        const weaponX = screenX - 10;
+                         switch(currentWeaponKey) {
+                            case 'peck_cannon':
+                                ctx.fillRect(weaponX, weaponY, 20, 8);
+                                break;
+                            case 'feather_spread':
+                                ctx.fillRect(weaponX - 15, weaponY - 4, 25, 16);
+                                ctx.fillRect(weaponX - 20, weaponY - 2, 5, 12);
+                                break;
+                            case 'egg_launcher':
+                                ctx.fillStyle = '#4a4a4a';
+                                ctx.fillRect(weaponX - 15, weaponY - 8, 30, 16);
+                                ctx.beginPath();
+                                ctx.arc(weaponX - 15, weaponY, 10, 0, Math.PI * 2);
+                                ctx.fill();
+                                break;
+                        }
+                    }
+
                     ctx.fillStyle = '#DAA520';
                     ctx.fillRect(screenX + this.width * 0.2, this.worldY + this.height * 0.4, this.width * 0.6, 8);
                     ctx.fillStyle = '#FFA500';
@@ -493,15 +569,27 @@
             }
         };
 
-        // --- 敵人建構函式與原型方法 ---
-        function Enemy(worldX, worldY, width, height, color, health, type, shootInterval = 2000, movePattern = 'static', damage = 6) {
+        // --- 敵人建構函式與原型方法 (★ FIXED) ---
+        function Enemy(worldX, worldY, width, height, color, health, type, shootInterval = 2000, movePattern = 'static', damage = 6, specialCooldown = 10000) {
             this.worldX = worldX; this.worldY = worldY; this.width = width; this.height = height;
             this.color = color; this.health = health; this.maxHealth = health; this.type = type;
             this.bullets = []; this.lastShotTime = 0; this.shootInterval = shootInterval;
-            this.speedX = (movePattern === 'patrol' ? (Math.random() > 0.5 ? 1 : -1) * 1.2 : 0);
+            this.speedX = (movePattern === 'patrol' || movePattern === 'chase' ? (Math.random() > 0.5 ? 1 : -1) * (type === 'eggplant' ? 2.5 : 1.2) : 0);
             this.originalX = worldX; this.patrolRange = 50 + Math.random()*50;
-            this.movePattern = movePattern; this.contactDamage = damage;
+            this.movePattern = movePattern;
+            
+            // ★ FIX: 確保傷害值被正確設定
+            this.damage = damage;
+            this.contactDamage = damage;
+
             this.isBoss = type.startsWith('boss_');
+            this.isRaged = false;
+            this.specialAttackCooldown = specialCooldown;
+            this.lastSpecialAttack = Date.now();
+            this.attackPhase = 0;
+            this.attackTimer = 0;
+            this.targetX = 0;
+            this.targetY = 0;
         }
 
         Enemy.prototype.draw = function() {
@@ -539,8 +627,19 @@
                     ctx.fillStyle = '#228B22';
                     ctx.fillRect(screenX + this.width/2 - 5, this.worldY - 5, 10, 5);
                     break;
+                case 'eggplant':
+                    ctx.fillStyle = '#4B0082';
+                    ctx.beginPath();
+                    ctx.ellipse(screenX + this.width / 2, this.worldY + this.height / 2, this.width / 2, this.height/2.2, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#9400D3';
+                    ctx.fillRect(screenX + this.width * 0.2, this.worldY + this.height * 0.4, this.width * 0.6, 10);
+                    ctx.fillStyle = 'red';
+                    ctx.fillRect(screenX + this.width * 0.3, this.worldY + this.height * 0.2, 5, 5);
+                    ctx.fillRect(screenX + this.width * 0.7 - 5, this.worldY + this.height * 0.2, 5, 5);
+                    break;
                 case 'boss_cabbage_king':
-                    ctx.fillStyle = this.color;
+                    ctx.fillStyle = this.isRaged ? '#ff6b6b' : this.color;
                     ctx.beginPath();
                     ctx.arc(screenX + this.width / 2, this.worldY + this.height / 2, this.width / 2, 0, Math.PI * 2);
                     ctx.fill();
@@ -555,7 +654,7 @@
                     ctx.fill();
                     break;
                 case 'boss_tomato_lord':
-                    ctx.fillStyle = this.color;
+                    ctx.fillStyle = this.isRaged ? '#ff4757' : this.color;
                     ctx.beginPath();
                     ctx.arc(screenX + this.width / 2, this.worldY + this.height / 2, this.width / 2, 0, Math.PI * 2);
                     ctx.fill();
@@ -567,7 +666,7 @@
                     ctx.fillRect(screenX + this.width * 0.8 - 10, this.worldY + this.height*0.3 + 5, 5, 5);
                     break;
                 default:
-                    ctx.fillStyle = this.color;
+                    ctx.fillStyle = this.isRaged ? '#ff6b6b' : this.color;
                     ctx.fillRect(screenX, this.worldY, this.width, this.height);
                     break;
             }
@@ -585,55 +684,136 @@
             });
         };
 
+        // ★★★ MODIFIED: 敵人更新，加入全新魔王攻擊邏輯 ★★★
         Enemy.prototype.update = function() {
             const screenX = this.worldX - cameraX;
             if (!this.isBoss && (screenX + this.width < -200 || screenX > canvas.width + 200) ) return;
-
-            if (this.movePattern === 'patrol') {
-                this.worldX += this.speedX;
-                if (this.worldX > this.originalX + this.patrolRange || this.worldX < this.originalX - this.patrolRange) { this.speedX *= -1; }
-            }
-            if (this.isBoss) {
-                 if(Math.random() < 0.01) { this.worldY -= Math.random() * 20 - 10; }
-            }
-
+            
             const now = Date.now();
-            if ((this.isBoss || (player.worldX > this.worldX - canvas.width / 1.5 && player.worldX < this.worldX + canvas.width / 1.5)) &&
-                now - this.lastShotTime > this.shootInterval) {
-                this.lastShotTime = now;
-                const bulletColor = this.isBoss ? '#FF00FF' : (this.type === 'cabbage' ? '#90EE90' : this.type === 'carrot' ? '#FFA500' : '#FF6347');
-                const bulletRadius = this.isBoss ? 8 : 4;
-                const bulletSpeed = this.isBoss ? 5 : 4;
-                const bulletDamage = this.isBoss && BOSS_TYPES[currentMajorStage-1] ? (BOSS_TYPES[currentMajorStage-1].damage) : 5;
-                const bulletStartX = this.worldX + this.width / 2; const bulletStartY = this.worldY + this.height / 2;
 
-                if (this.isBoss && Math.random() < 0.3) {
-                    for(let i = -1; i <= 1; i++) {
-                         this.bullets.push({
-                            worldX: bulletStartX, worldY: bulletStartY, radius: bulletRadius,
-                            speedX: Math.cos(i*0.3) * bulletSpeed, speedY: Math.sin(i*0.3) * bulletSpeed + (player.worldY - bulletStartY > 0 ? 1 : -1) * bulletSpeed *0.5,
-                            color: bulletColor, damage: bulletDamage,
-                            creationX: bulletStartX, creationY: bulletStartY, maxRange: ENEMY_BULLET_MAX_RANGE * 1.5 });
-                    }
-                } else {
-                    const angle = Math.atan2((player.worldY + player.height/2) - bulletStartY, (player.worldX + player.width/2) - bulletStartX);
-                    this.bullets.push({
-                        worldX: bulletStartX, worldY: bulletStartY, radius: bulletRadius,
-                        speedX: Math.cos(angle) * bulletSpeed, speedY: Math.sin(angle) * bulletSpeed,
-                        color: bulletColor, damage: bulletDamage,
-                        creationX: bulletStartX, creationY: bulletStartY, maxRange: ENEMY_BULLET_MAX_RANGE });
+            if(this.isBoss){
+                 // 狂暴模式檢查
+                 if(this.health / this.maxHealth < 0.5 && !this.isRaged) {
+                     this.isRaged = true;
+                     this.shootInterval *= 0.7; // 攻擊速度變快
+                     this.specialAttackCooldown *= 0.8;
+                     messageDisplay.textContent = `${activeBoss.bossName} 狂暴了！`;
+                     setTimeout(() => messageDisplay.textContent = "", 2000);
+                 }
+                // 檢查是否該發動特殊攻擊
+                if (this.attackPhase === 0 && now - this.lastSpecialAttack > this.specialAttackCooldown) {
+                    this.attackPhase = 1;
+                    this.attackTimer = 0;
+                    this.lastSpecialAttack = now;
                 }
+
+                // ★ NEW: 各魔王獨特AI
+                switch(this.type){
+                    case 'boss_cabbage_king':
+                        // 特殊攻擊：滾動突襲
+                        if(this.attackPhase === 1){
+                           this.worldY = canvas.height - 60 - this.height; // 移動到地面
+                           this.speedX = player.worldX < this.worldX ? -7 : 7; // 朝玩家方向
+                           this.attackPhase = 2;
+                        } else if (this.attackPhase === 2){
+                            this.worldX += this.speedX;
+                            if(this.worldX < activeBoss.initialArenaX || this.worldX + this.width > activeBoss.initialArenaX + canvas.width){
+                                this.speedX = 0;
+                                this.attackPhase = 0; // 結束
+                            }
+                        } else {
+                            // 普通攻擊：散射
+                            if (now - this.lastShotTime > this.shootInterval) {
+                                this.lastShotTime = now;
+                                for(let i = -1; i <= 1; i++) {
+                                     this.bullets.push({
+                                        worldX: this.worldX + this.width / 2, worldY: this.worldY + this.height / 2, radius: 8,
+                                        speedX: Math.cos(i*0.3) * 4 * (player.worldX < this.worldX ? -1 : 1), speedY: Math.sin(i*0.3) * 4,
+                                        color: '#abffb1', damage: this.damage, creationX: this.worldX, maxRange: ENEMY_BULLET_MAX_RANGE
+                                    });
+                                }
+                            }
+                        }
+                        break;
+
+                    case 'boss_tomato_lord':
+                        // 特殊攻擊：番茄醬噴發
+                        if(this.attackPhase === 1){
+                            this.targetY = this.worldY - 100; // 向上跳
+                            this.attackPhase = 2;
+                        } else if (this.attackPhase === 2) {
+                            this.worldY -= 5;
+                            if(this.worldY <= this.targetY) this.attackPhase = 3;
+                        } else if (this.attackPhase === 3) { // 在空中噴發
+                            for(let i=0; i<12; i++){
+                                const angle = (i/12) * Math.PI * 2;
+                                environmentalHazards.push({
+                                    type: 'puddle', x: this.worldX + this.width/2, y: canvas.height - 70, radius: 20, duration: 300, damage: 5
+                                });
+                            }
+                            this.attackPhase = 4;
+                        } else if (this.attackPhase === 4) {
+                            this.worldY += 8; // 落下
+                            if(this.worldY >= canvas.height - 60 - this.height) this.attackPhase = 0;
+                        } else {
+                            // 普通攻擊：追蹤彈
+                            if (now - this.lastShotTime > this.shootInterval) {
+                                this.lastShotTime = now;
+                                this.bullets.push({
+                                    worldX: this.worldX + this.width / 2, worldY: this.worldY + this.height / 2, radius: 10,
+                                    speedX: 0, speedY: 0, color: '#ff6347', damage: this.damage, creationX: this.worldX, maxRange: ENEMY_BULLET_MAX_RANGE,
+                                    homing: true, lifetime: 120 // 追蹤2秒
+                                });
+                            }
+                        }
+                        break;
+                    
+                    // 其他魔王邏輯...
+                }
+
+            } else { // 小兵邏輯
+                if (this.movePattern === 'chase' && Math.abs(player.worldX - this.worldX) < 300) {
+                    if (player.worldX < this.worldX) this.speedX = -1.5;
+                    else this.speedX = 1.5;
+                    this.worldX += this.speedX;
+                } else if (this.movePattern === 'patrol') {
+                    this.worldX += this.speedX;
+                    if (this.worldX > this.originalX + this.patrolRange || this.worldX < this.originalX - this.patrolRange) { this.speedX *= -1; }
+                }
+
+                 if (now - this.lastShotTime > this.shootInterval && Math.abs(player.worldX - this.worldX) < 400) {
+                     this.lastShotTime = now;
+                     const angle = Math.atan2((player.worldY + player.height/2) - (this.worldY + this.height/2), (player.worldX + player.width/2) - (this.worldX + this.width/2));
+                     this.bullets.push({
+                        worldX: this.worldX + this.width/2, worldY: this.worldY + this.height/2, radius: 5,
+                        speedX: Math.cos(angle) * 4, speedY: Math.sin(angle) * 4,
+                        color: this.type === 'eggplant' ? '#9400D3' : '#FF6347', damage: this.damage,
+                        creationX: this.worldX, maxRange: ENEMY_BULLET_MAX_RANGE
+                    });
+                 }
             }
+
+            // 子彈更新
             this.bullets.forEach((bullet, index) => {
+                if(bullet.homing && bullet.lifetime > 0){
+                    const angle = Math.atan2((player.worldY + player.height/2) - bullet.worldY, (player.worldX + player.width/2) - bullet.worldX);
+                    bullet.speedX += Math.cos(angle) * 0.2;
+                    bullet.speedY += Math.sin(angle) * 0.2;
+                    // 限制最大速度
+                    const speed = Math.sqrt(bullet.speedX**2 + bullet.speedY**2);
+                    if(speed > 3){
+                       bullet.speedX = (bullet.speedX / speed) * 3;
+                       bullet.speedY = (bullet.speedY / speed) * 3;
+                    }
+                    bullet.lifetime--;
+                }
                 bullet.worldX += bullet.speedX; bullet.worldY += bullet.speedY;
-                const distanceTraveled = Math.sqrt(Math.pow(bullet.worldX - bullet.creationX, 2) + Math.pow(bullet.worldY - bullet.creationY, 2));
-                if (distanceTraveled > bullet.maxRange ||
-                    bullet.worldX < cameraX - 50 || bullet.worldX > cameraX + canvas.width + 50 ||
-                    bullet.worldY < -50 || bullet.worldY > canvas.height + 50) {
+                if (bullet.worldX < cameraX - 50 || bullet.worldX > cameraX + canvas.width + 50) {
                     this.bullets.splice(index, 1);
                 }
             });
         };
+
 
         let enemies = []; let collectibles = []; let platforms = [];
         const MIN_PLATFORM_Y = canvas.height - 50; const MAX_PLATFORM_Y = 150;
@@ -738,17 +918,19 @@
                 const platformStyle = PLATFORM_STYLES[Math.floor(Math.random() * PLATFORM_STYLES.length)];
                 platforms.push(new Platform(currentX, newPlatformY, platformWidth, platformHeight, platformStyle));
 
-                if (!bossActive && Math.random() < 0.35) {
+                if (!bossActive && Math.random() < 0.45) {
                     const enemyRand = Math.random();
-                    let enemyType, enemyW, enemyH;
-                    if (enemyRand < 0.4) {
-                        enemyType = 'tomato'; enemyW = 25; enemyH = 25;
-                    } else if (enemyRand < 0.8) {
-                        enemyType = 'cabbage'; enemyW = 28; enemyH = 28;
+                    let enemyType, enemyW, enemyH, movePattern, damage;
+                    if (enemyRand < 0.3) {
+                        enemyType = 'tomato'; enemyW = 25; enemyH = 25; movePattern = 'patrol'; damage = 5;
+                    } else if (enemyRand < 0.6) {
+                        enemyType = 'cabbage'; enemyW = 28; enemyH = 28; movePattern = 'chase'; damage = 7;
+                    } else if (enemyRand < 0.85) {
+                        enemyType = 'carrot'; enemyW = 20; enemyH = 30; movePattern = 'patrol'; damage = 5;
                     } else {
-                        enemyType = 'carrot'; enemyW = 20; enemyH = 30;
+                        enemyType = 'eggplant'; enemyW = 22; enemyH = 35; movePattern = 'patrol'; damage = 10;
                     }
-                    enemies.push(new Enemy(currentX + platformWidth / 2 - 12, newPlatformY - enemyH, enemyW, enemyH, null, 1, enemyType, 2800 - currentMajorStage * 100, 'patrol'));
+                    enemies.push(new Enemy(currentX + platformWidth / 2 - 12, newPlatformY - enemyH, enemyW, enemyH, null, enemyType === 'eggplant' ? 5 : 1, enemyType, 2500 - currentMajorStage * 120, movePattern, damage));
                 }
                 if (!bossActive && Math.random() < 0.04) {
                     const weaponKeys = ['feather_spread', 'egg_launcher'];
@@ -762,23 +944,16 @@
             worldGeneratedUpToX = Math.max(worldGeneratedUpToX, endX);
         }
 
-        // --- ★ NEW: 魔王戰場生成函式 ---
         function generateBossArena() {
-            // 清除目前視窗內的所有平台
             platforms = platforms.filter(p => p.worldX + p.width < cameraX || p.worldX > cameraX + canvas.width);
+            environmentalHazards = [];
             
-            // 創建固定的魔王戰平台
             const arenaStartX = cameraX;
-            // 底部大平台
             platforms.push(new Platform(arenaStartX - 50, canvas.height - 60, canvas.width + 100, 60, 'stone'));
-            // 左中平台
             platforms.push(new Platform(arenaStartX + 100, canvas.height - 180, 150, 20, 'stone'));
-            // 右中平台
             platforms.push(new Platform(arenaStartX + canvas.width - 250, canvas.height - 180, 150, 20, 'stone'));
-             // 中間高平台
             platforms.push(new Platform(arenaStartX + canvas.width/2 - 100, canvas.height - 280, 200, 20, 'stone'));
         }
-
 
         function manageLevelGeneration() {
             if (bossActive) return;
@@ -814,7 +989,6 @@
             if (!bossActive) { 
                 cameraX += (targetCamX - cameraX) * 0.1; 
             } else if (activeBoss) {
-                // 魔王戰時，鏡頭鎖定在戰場中心
                 const arenaCenterX = activeBoss.initialArenaX + canvas.width / 2;
                 const desiredCameraX = arenaCenterX - canvas.width / 2;
                 cameraX += (desiredCameraX - cameraX) * 0.05;
@@ -823,6 +997,7 @@
         }
 
         function checkCollisions() {
+            // 玩家子彈 vs 敵人
             player.bullets.forEach((bullet, bulletIndex) => {
                 let allTargets = enemies.concat(activeBoss ? [activeBoss] : []);
                 allTargets.forEach((target) => {
@@ -836,12 +1011,13 @@
                             score += target.isBoss ? 500 * currentMajorStage : (10 + currentMajorStage * 2);
                             if (target.isBoss) {
                                 playSound('boss_die');
-                                bossActive = false; activeBoss = null; messageDisplay.textContent = `第 ${currentMajorStage} 關魔王已被擊敗!`;
+                                bossActive = false; activeBoss = null; environmentalHazards = [];
+                                messageDisplay.textContent = `第 ${currentMajorStage} 關魔王已被擊敗!`;
                                 setTimeout(()=> messageDisplay.textContent = "", 3000); currentMajorStage++;
                                 if (currentMajorStage > MAX_STAGES) { gameWon = true; }
                                 else {
                                     nextBossSpawnX = player.worldX + BOSS_SPAWN_INTERVAL + Math.random() * 500;
-                                    playerHealth = Math.min(100, playerHealth + 30 + currentMajorStage * 5);
+                                    playerHealth = Math.min(100, playerHealth + 40 + currentMajorStage * 5);
                                     if (currentMajorStage == 2 || currentMajorStage == 4) collectibles.push(new Collectible(target.worldX + target.width/2, target.worldY + target.height/2, 'weapon', 'egg_launcher'));
                                     else if (currentMajorStage == 3) collectibles.push(new Collectible(target.worldX + target.width/2, target.worldY + target.height/2, 'weapon', 'feather_spread'));
                                     else collectibles.push(new Collectible(target.worldX + target.width/2, target.worldY + target.height/2, 'health', 50));
@@ -852,6 +1028,7 @@
                     }
                 });
             });
+            // 敵人子彈 vs 玩家
             let allEnemyBulletsSources = enemies.concat(activeBoss ? [activeBoss] : []);
             allEnemyBulletsSources.forEach(source => {
                 if(!source) return;
@@ -862,13 +1039,18 @@
                         bullet.worldY + bullet.radius > player.worldY) {
                         source.bullets.splice(bulletIndex, 1);
                         if (!player.invincible) {
-                            playerHealth -= bullet.damage; playSound('player_hit');
-                            player.invincible = true; player.invincibleTimer = 1000;
+                            playerHealth -= bullet.damage;
+                            playSound('player_hit');
+                            damageOverlay.style.opacity = 1;
+                            setTimeout(() => damageOverlay.style.opacity = 0, 100);
+                            player.invincible = true;
+                            player.invincibleTimer = 1000;
                             if (playerHealth <= 0) { playerHealth = 0; gameOver = true; }
                         }
                     }
                 });
             });
+            // 敵人 vs 玩家直接碰撞
             allEnemyBulletsSources.forEach(source => {
                  if(!source) return;
                  if (player.worldX < source.worldX + source.width &&
@@ -876,12 +1058,34 @@
                     player.worldY < source.worldY + source.height &&
                     player.worldY + player.height > source.worldY) {
                     if (!player.invincible) {
-                        playerHealth -= source.contactDamage * 0.1; playSound('player_hit', {volume: 0.15});
-                        player.invincible = true; player.invincibleTimer = 800;
+                        playerHealth -= source.contactDamage; // 直接碰撞傷害更高
+                        playSound('player_hit', {volume: 0.15});
+                        damageOverlay.style.opacity = 1;
+                        setTimeout(() => damageOverlay.style.opacity = 0, 100);
+                        player.invincible = true;
+                        player.invincibleTimer = 800;
                         if (playerHealth <= 0) { playerHealth = 0; gameOver = true; }
                     }
                 }
             });
+            // 環境傷害 vs 玩家
+            environmentalHazards.forEach(hazard => {
+                const dx = player.worldX + player.width/2 - hazard.x;
+                const dy = player.worldY + player.height/2 - hazard.y;
+                if(Math.sqrt(dx*dx + dy*dy) < player.width/2 + hazard.radius){
+                     if (!player.invincible) {
+                        playerHealth -= hazard.damage;
+                        playSound('player_hit', {volume: 0.1});
+                        damageOverlay.style.opacity = 1;
+                        setTimeout(() => damageOverlay.style.opacity = 0, 100);
+                        player.invincible = true;
+                        player.invincibleTimer = 500;
+                        if (playerHealth <= 0) { playerHealth = 0; gameOver = true; }
+                    }
+                }
+            });
+
+            // 玩家 vs 收集品
             collectibles.forEach((item, index) => {
                 if (!item.collected &&
                     player.worldX < item.worldX + item.width &&
@@ -897,33 +1101,47 @@
             });
         }
 
-        // --- ★ MODIFIED: 遊戲主更新函式 ---
         function update() {
             if (!gameRunning || gameOver) return;
             handleInput(); player.update(); 
             
             if (!bossActive) {
                 manageLevelGeneration();
+                gameTime++;
+                updateClouds();
+            } else {
+                // 更新環境傷害
+                environmentalHazards.forEach((hazard, index) => {
+                    hazard.duration--;
+                    if(hazard.duration <= 0){
+                        environmentalHazards.splice(index, 1);
+                    }
+                });
             }
 
             enemies.forEach(enemy => enemy.update()); if (activeBoss) activeBoss.update();
             updateCamera(); checkCollisions();
+            
+            muzzleFlashes.forEach((flash, index) => {
+                flash.alpha -= 0.15;
+                if(flash.alpha <= 0) {
+                    muzzleFlashes.splice(index, 1);
+                }
+            });
 
             scoreDisplay.textContent = `分數: ${score}`; healthDisplay.textContent = `生命: ${Math.ceil(playerHealth)}`;
             stageDisplay.textContent = `大關卡: ${currentMajorStage > MAX_STAGES ? MAX_STAGES : currentMajorStage}/${MAX_STAGES}`;
             progressDisplay.textContent = `進度: ${Math.floor(player.worldX / 10)}m`;
 
-            // --- ★ MODIFIED: 魔王觸發邏輯 ---
             if (!bossActive && !gameWon && currentMajorStage <= MAX_STAGES && player.worldX >= nextBossSpawnX) {
                 bossActive = true; 
-                enemies = []; // 清空所有小怪
+                enemies = [];
                 
-                generateBossArena(); // 生成魔王戰場
+                generateBossArena();
                 
                 const bossData = BOSS_TYPES[currentMajorStage - 1];
-                const bossHealth = bossData.health + currentMajorStage * 50;
+                const bossHealth = bossData.health + currentMajorStage * 100;
                 
-                // 將魔王生成在戰場右側
                 const spawnX = cameraX + canvas.width - bossData.width - 100;
                 const spawnY = canvas.height - 60 - bossData.height;
 
@@ -931,10 +1149,11 @@
                     spawnX, spawnY,
                     bossData.width, bossData.height,
                     bossData.color, bossHealth, bossData.type,
-                    2000 - currentMajorStage * 150,
-                    'static', bossData.damage
+                    1800 - currentMajorStage * 150,
+                    'static', bossData.damage, bossData.specialCooldown
                 );
-                activeBoss.initialArenaX = cameraX; // 記錄戰場起始位置給鏡頭用
+                activeBoss.initialArenaX = cameraX;
+                activeBoss.bossName = bossData.name;
 
                 messageDisplay.textContent = `魔王來襲: ${bossData.name}！`;
                 setTimeout(()=> messageDisplay.textContent = "", 3000);
@@ -948,21 +1167,133 @@
             }
             if (gameWon && !gameOver) { gameOver = true; }
         }
-
+        
+        function updateClouds() {
+            clouds.forEach(cloud => {
+                cloud.x -= cloud.speed;
+                if (cloud.x + cloud.width < 0) {
+                    cloud.x = canvas.width;
+                }
+            });
+        }
+        
         function draw() {
-            ctx.fillStyle = '#87CEEB'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-            const parallaxFactor1 = 0.1; const parallaxFactor2 = 0.3;
-            ctx.fillStyle = '#aaddff';
-            for (let i = - (cameraX * parallaxFactor1 % 100) ; i < canvas.width; i += 100) {
-                ctx.beginPath(); ctx.moveTo(i, canvas.height - 100); ctx.lineTo(i+50, canvas.height-200); ctx.lineTo(i+100, canvas.height-100); ctx.fill();
-            }
-            ctx.fillStyle = '#77bbdd';
-             for (let i = - (cameraX * parallaxFactor2 % 150) ; i < canvas.width; i += 150) { ctx.fillRect(i, canvas.height - 120, 120, 120); }
+            drawBackground();
 
-            if (!gameRunning && !gameOver && !gameWon) { displayStartScreen(); return; }
-            platforms.forEach(p => p.draw()); collectibles.forEach(c => c.draw());
-            player.draw(); enemies.forEach(enemy => enemy.draw()); if (activeBoss) activeBoss.draw();
-            if (gameOver) { displayGameOverScreen(); }
+            if (!gameRunning && !gameOver && !gameWon) { 
+                displayStartScreen(); 
+                return; 
+            }
+
+            platforms.forEach(p => p.draw()); 
+            collectibles.forEach(c => c.draw());
+            
+            // ★ NEW: 繪製環境傷害
+            environmentalHazards.forEach(hazard => {
+                if(hazard.type === 'puddle'){
+                    ctx.fillStyle = 'rgba(255, 0, 0, 0.4)';
+                    ctx.beginPath();
+                    ctx.arc(hazard.x - cameraX, hazard.y, hazard.radius, 0, Math.PI*2);
+                    ctx.fill();
+                }
+            });
+
+            player.draw(); 
+            enemies.forEach(enemy => enemy.draw()); 
+            if (activeBoss) activeBoss.draw();
+            
+            muzzleFlashes.forEach(flash => {
+                ctx.fillStyle = `rgba(255, 223, 0, ${flash.alpha})`;
+                ctx.beginPath();
+                ctx.arc(flash.x - cameraX, flash.y, 8, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            if (gameOver) { 
+                displayGameOverScreen(); 
+            }
+        }
+        
+        function drawBackground() {
+            const cycleDuration = 3600;
+            const timeOfDay = (gameTime * TIME_SCALE) % cycleDuration;
+            
+            let skyColor1, skyColor2;
+            const dawnTime = cycleDuration * 0.25;
+            const dayTime = cycleDuration * 0.4;
+            const duskTime = cycleDuration * 0.75;
+            const nightTime = cycleDuration * 0.9;
+
+            if (timeOfDay < dawnTime) {
+                const progress = timeOfDay / dawnTime;
+                skyColor1 = lerpColor("#000033", "#3a6ea5", progress);
+                skyColor2 = lerpColor("#1a2533", "#87CEEB", progress);
+            } else if (timeOfDay < dayTime) {
+                skyColor1 = "#3a6ea5";
+                skyColor2 = "#87CEEB";
+            } else if (timeOfDay < duskTime) {
+                const progress = (timeOfDay - dayTime) / (duskTime - dayTime);
+                skyColor1 = lerpColor("#3a6ea5", "#ff8c00", progress);
+                skyColor2 = lerpColor("#87CEEB", "#ffc04d", progress);
+            } else {
+                const progress = (timeOfDay - duskTime) / (cycleDuration - duskTime);
+                skyColor1 = lerpColor("#ff8c00", "#000033", progress);
+                skyColor2 = lerpColor("#ffc04d", "#1a2533", progress);
+            }
+
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            gradient.addColorStop(0, skyColor1);
+            gradient.addColorStop(1, skyColor2);
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.save();
+            const celestialAngle = (timeOfDay / cycleDuration) * 2 * Math.PI - Math.PI / 2;
+            const celestialX = canvas.width / 2 + Math.cos(celestialAngle) * canvas.width * 0.4;
+            const celestialY = canvas.height * 0.8 + Math.sin(celestialAngle) * canvas.height * 0.7;
+
+            if (timeOfDay > dawnTime * 0.5 && timeOfDay < duskTime * 1.1) {
+                ctx.fillStyle = 'rgba(255, 255, 0, 0.8)';
+                ctx.beginPath();
+                ctx.arc(celestialX, celestialY, 40, 0, 2 * Math.PI);
+                ctx.fill();
+            } else {
+                ctx.fillStyle = 'rgba(240, 240, 255, 0.9)';
+                ctx.beginPath();
+                ctx.arc(celestialX, celestialY, 30, 0, 2 * Math.PI);
+                ctx.fill();
+            }
+            ctx.restore();
+
+            if (timeOfDay > duskTime * 0.95 || timeOfDay < dawnTime * 1.05) {
+                stars.forEach(star => {
+                    ctx.fillStyle = `rgba(255, 255, 255, ${star.opacity})`;
+                    ctx.fillRect(star.x, star.y, star.size, star.size);
+                    star.opacity += star.flickerSpeed;
+                    if (star.opacity > 1 || star.opacity < 0.2) {
+                        star.flickerSpeed *= -1;
+                    }
+                });
+            }
+
+            clouds.forEach(cloud => {
+                ctx.fillStyle = cloud.color;
+                ctx.globalAlpha = cloud.alpha;
+                ctx.fillRect(cloud.x - cameraX * cloud.parallax, cloud.y, cloud.width, cloud.height);
+                ctx.globalAlpha = 1.0;
+            });
+        }
+
+        function lerpColor(a, b, amount) {
+            const ah = parseInt(a.replace(/#/g, ''), 16),
+                  ar = ah >> 16, ag = ah >> 8 & 0xff, ab = ah & 0xff,
+                  bh = parseInt(b.replace(/#/g, ''), 16),
+                  br = bh >> 16, bg = bh >> 8 & 0xff, bb = bh & 0xff,
+                  rr = ar + amount * (br - ar),
+                  rg = ag + amount * (bg - ag),
+                  rb = ab + amount * (bb - ab);
+
+            return '#' + ((1 << 24) + (rr << 16) + (rg << 8) + rb | 0).toString(16).slice(1);
         }
 
         function displayStartScreen() {
@@ -970,7 +1301,7 @@
             ctx.fillStyle = 'white'; ctx.font = '30px "Courier New"'; ctx.textAlign = 'center';
             ctx.fillText('戰鬥雞：無盡征途', canvas.width / 2, canvas.height / 2 - 60);
             ctx.font = '20px "Courier New"';
-            ctx.fillText('準備好迎接隨機的挑戰了嗎?', canvas.width / 2, canvas.height / 2 -10);
+            ctx.fillText('準備好迎接真正的挑戰了嗎?', canvas.width / 2, canvas.height / 2 -10);
             ctx.fillText('擊敗五大蔬菜魔王，成為雞界傳奇!', canvas.width / 2, canvas.height / 2 + 20);
             ctx.fillText('按"開始遊戲"或 Enter/Space', canvas.width / 2, canvas.height / 2 + 60);
             startButton.style.display = 'block';
@@ -1002,8 +1333,35 @@
 
             player.updateWeaponUI();
             skillReady = true; lastSkillTime = 0; skillStatusDisplay.textContent = "技能: 就緒! (S)";
-            platforms = []; enemies = []; collectibles = [];
+            platforms = []; enemies = []; collectibles = []; muzzleFlashes = []; environmentalHazards = [];
             generateSegment(0); nextBossSpawnX = BOSS_SPAWN_INTERVAL; messageDisplay.textContent = "";
+
+            gameTime = 0;
+            stars = [];
+            for (let i = 0; i < 100; i++) {
+                stars.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height * 0.8,
+                    size: Math.random() * 2 + 1,
+                    opacity: Math.random() * 0.5 + 0.2,
+                    flickerSpeed: (Math.random() - 0.5) * 0.02
+                });
+            }
+            clouds = [];
+            for (let i = 0; i < 20; i++) {
+                const parallax = Math.random() * 0.3 + 0.1;
+                clouds.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height * 0.6,
+                    width: Math.random() * 100 + 80,
+                    height: Math.random() * 20 + 20,
+                    speed: parallax * 0.5,
+                    parallax: parallax,
+                    color: 'rgba(255, 255, 255, 0.7)',
+                    alpha: parallax + 0.3
+                });
+            }
+            clouds.sort((a,b) => a.parallax - b.parallax);
         }
 
         let animationFrameId = null;
@@ -1034,6 +1392,7 @@
             }
         });
         
+        initGame();
         draw();
     </script>
 </body>
