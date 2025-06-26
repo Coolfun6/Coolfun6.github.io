@@ -523,10 +523,10 @@
                     playSound('pickup_weapon');
                 } else {
                      if (WEAPON_TYPES[weaponKey].ammo !== Infinity) {
-                        if(weaponKey === 'feather_spread') this.P_feather_spread_ammo = Math.min(this.P_feather_spread_ammo + WEAPON_TYPES[weaponKey].maxAmmo, WEAPON_TYPES[weaponKey].maxAmmo);
-                        else if(weaponKey === 'egg_launcher') this.P_egg_launcher_ammo = Math.min(this.P_egg_launcher_ammo + WEAPON_TYPES[weaponKey].maxAmmo, WEAPON_TYPES[weaponKey].maxAmmo);
-                        messageDisplay.textContent = `${WEAPON_TYPES[weaponKey].name} 彈藥已補充!`;
-                        playSound('pickup_health');
+                         if(weaponKey === 'feather_spread') this.P_feather_spread_ammo = Math.min(this.P_feather_spread_ammo + WEAPON_TYPES[weaponKey].maxAmmo, WEAPON_TYPES[weaponKey].maxAmmo);
+                         else if(weaponKey === 'egg_launcher') this.P_egg_launcher_ammo = Math.min(this.P_egg_launcher_ammo + WEAPON_TYPES[weaponKey].maxAmmo, WEAPON_TYPES[weaponKey].maxAmmo);
+                         messageDisplay.textContent = `${WEAPON_TYPES[weaponKey].name} 彈藥已補充!`;
+                         playSound('pickup_health');
                      }
                 }
                 setTimeout(()=> messageDisplay.textContent = "", 2000);
@@ -637,8 +637,6 @@
                 this.grounded = false;
 
                 platforms.forEach(p => {
-                    if (p.type === 'unstable' && p.life < p.maxLife) return; // 不能從下方穿過不穩定平台
-
                     if (this.worldX + this.width > p.worldX && this.worldX < p.worldX + p.width &&
                         this.worldY + this.height >= p.worldY && this.worldY + this.height - this.dy <= p.worldY + 1) {
                         this.worldY = p.worldY - this.height;
@@ -646,7 +644,6 @@
                         this.grounded = true;
                         this.jumps = this.maxJumps;
                         this.isDoubleJumping = false;
-                        if(p.type === 'unstable') p.touched = true; // 觸摸不穩定平台
                     }
                 });
 
@@ -798,13 +795,13 @@
 
             if(this.isBoss){
                  if(this.health / this.maxHealth < 0.5 && !this.isRaged) {
-                     this.isRaged = true;
-                     this.shootInterval *= 0.6; // 狂暴後攻擊更快
-                     this.specialAttackCooldown *= 0.7;
-                     messageDisplay.textContent = `${activeBoss.bossName} 狂暴了！`;
-                     playSound('boss_rage');
-                     triggerScreenShake(8, 300);
-                     setTimeout(() => messageDisplay.textContent = "", 2000);
+                      this.isRaged = true;
+                      this.shootInterval *= 0.6; // 狂暴後攻擊更快
+                      this.specialAttackCooldown *= 0.7;
+                      messageDisplay.textContent = `${activeBoss.bossName} 狂暴了！`;
+                      playSound('boss_rage');
+                      triggerScreenShake(8, 300);
+                      setTimeout(() => messageDisplay.textContent = "", 2000);
                  }
                 if (this.attackPhase === 0 && now - this.lastSpecialAttack > this.specialAttackCooldown) {
                     this.attackPhase = 1;
@@ -1048,23 +1045,16 @@
         const PLATFORM_MIN_GAP_Y = 20; const PLATFORM_MAX_GAP_Y = 120;
 
         const PLATFORM_STYLES = ['grass', 'brick', 'stone', 'wood'];
-        function Platform(worldX, worldY, width, height, style, type='normal') { // ★ 地獄+++: 增加平台類型
+        function Platform(worldX, worldY, width, height, style, type='normal') {
             this.worldX = worldX; this.worldY = worldY; this.width = width; this.height = height;
             this.style = style;
-            this.type = type;
+            this.type = type; // Type is kept for potential future use, but logic is removed.
 
-            if (this.type === 'unstable') {
-                this.life = 120; this.maxLife = 120; this.touched = false;
-            }
-            
             this.draw = function() {
                 const screenX = this.worldX - cameraX;
                 if (screenX + this.width < 0 || screenX > canvas.width) return;
                 
                 ctx.save();
-                if (this.type === 'unstable') {
-                    ctx.globalAlpha = this.life / this.maxLife;
-                }
                 
                 switch(this.style) {
                     case 'grass':
@@ -1096,9 +1086,7 @@
             };
 
             this.update = function() {
-                if (this.type === 'unstable' && this.touched) {
-                    this.life--;
-                }
+                // No update logic needed for normal platforms
             }
         }
 
@@ -1141,8 +1129,8 @@
                 const platformHeight = 20 + Math.random() * 20;
                 const platformStyle = PLATFORM_STYLES[Math.floor(Math.random() * PLATFORM_STYLES.length)];
                 
-                // ★ 地獄+++: 加入不穩定平台
-                const platformType = Math.random() < 0.1 ? 'unstable' : 'normal';
+                // Platforms are always 'normal' now.
+                const platformType = 'normal'; 
                 platforms.push(new Platform(currentX, newPlatformY, platformWidth, platformHeight, platformStyle, platformType));
 
                 if (!bossActive && Math.random() < 0.45 + currentMajorStage * 0.05) {
@@ -1196,7 +1184,7 @@
             if (cameraX + canvas.width * 1.2 > worldGeneratedUpToX) { generateSegment(worldGeneratedUpToX); }
             for (let i = platforms.length - 1; i >= 0; i--) {
                 const p = platforms[i];
-                if (p.worldX + p.width < cameraX - canvas.width || (p.type === 'unstable' && p.life <= 0)) {
+                if (p.worldX + p.width < cameraX - canvas.width) {
                     platforms.splice(i, 1);
                 }
             }
