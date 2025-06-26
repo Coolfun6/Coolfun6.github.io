@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>戰鬥雞：無盡征途 (地獄+++)</title>
+    <title>戰鬥雞：無盡征途 (寵物系統)</title>
     <style>
         body {
             display: flex;
@@ -45,7 +45,7 @@
         }
         #gameUI span { margin: 2px 10px; }
         #controlsInfo {
-            margin-top: 10px;
+            margin-top: 5px; /* Adjusted margin */
             font-size: 14px;
             text-align: center;
         }
@@ -56,25 +56,35 @@
         }
         .button:hover { background-color: #229954; }
         
-        /* ★ 地獄+++: 鬥志條樣式 */
-        #gritContainer {
-            position: absolute;
-            bottom: -25px; /* UI下方 */
-            left: 50%;
-            transform: translateX(-50%);
+        /* Container for both resource bars */
+        #resourceBarsContainer {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            margin: 12px 0;
+        }
+        
+        /* Common style for resource bar containers */
+        .resource-container {
+            position: relative;
             width: 200px;
             height: 15px;
             background-color: #555;
             border: 1px solid #fff;
             border-radius: 3px;
         }
-        #gritBar {
+        
+        /* Common style for the bar itself */
+        .resource-container > div:first-child {
             width: 0%;
             height: 100%;
-            background-color: #e67e22;
             transition: width 0.2s ease-in-out;
         }
-        #gritText {
+
+        /* Common style for the text overlay */
+        .resource-container > div:last-child {
             position: absolute;
             top: -2px;
             left: 0;
@@ -83,12 +93,28 @@
             font-size: 14px;
             color: white;
             text-shadow: 1px 1px 2px black;
+            pointer-events: none;
+        }
+
+        /* Specific color for the Grit/Heal bar */
+        #gritBar {
+            background-color: #e67e22; /* Orange */
+        }
+
+        /* Specific color for the Pet Summon bar */
+        #petSummonBar {
+            background-color: #3498db; /* Blue */
+        }
+
+        /* Pet Status Style */
+        #petStatus {
+            color: #3498db;
         }
 
     </style>
 </head>
 <body>
-    <h1>戰鬥雞：無盡征途 (地獄+++)</h1>
+    <h1>戰鬥雞：無盡征途 (寵物系統)</h1>
     <div id="gameUI">
         <span id="score">分數: 0</span>
         <span id="stage">大關卡: 1</span>
@@ -96,17 +122,27 @@
         <span id="health">生命: 100</span>
         <span id="weapon">武器: 小雞啄米槍</span>
         <span id="skillStatus">技能: 就緒! (S)</span>
-        <div id="gritContainer">
+        <span id="petStatus">寵物: 未召喚</span>
+    </div>
+
+    <!-- New container for both resource bars -->
+    <div id="resourceBarsContainer">
+        <div id="gritContainer" class="resource-container">
             <div id="gritBar"></div>
-            <div id="gritText">鬥志 (F)</div>
+            <div id="gritText">鬥志</div>
+        </div>
+        <div id="petSummonContainer" class="resource-container">
+            <div id="petSummonBar"></div>
+            <div id="petSummonText">召喚寵物</div>
         </div>
     </div>
+    
     <div id="gameContainer">
         <canvas id="gameCanvas" width="800" height="400"></canvas>
         <div id="damageOverlay"></div>
     </div>
     <div id="controlsInfo">
-        ← →/A D: 移動 | ↑/W: 跳躍 | 空白鍵: 射擊 | S: 技能 | Q/E: 切換武器 | F: 消耗鬥志回血
+        ← →/A D: 移動 | ↑/W: 跳躍 | 空白鍵: 射擊 | S: 技能 | Q/E: 切換武器 | F: 消耗鬥志回血 | P: 召喚寵物
     </div>
     <button id="startButton" class="button">開始遊戲</button>
     <div id="messageDisplay" style="font-size: 22px; margin-top: 8px; color: #e67e22;"></div>
@@ -122,10 +158,13 @@
         const healthDisplay = document.getElementById('health');
         const weaponDisplay = document.getElementById('weapon');
         const skillStatusDisplay = document.getElementById('skillStatus');
+        const petStatusDisplay = document.getElementById('petStatus');
         const startButton = document.getElementById('startButton');
         const messageDisplay = document.getElementById('messageDisplay');
-        const gritBar = document.getElementById('gritBar'); // ★ 地獄+++
-        const gritText = document.getElementById('gritText'); // ★ 地獄+++
+        const gritBar = document.getElementById('gritBar');
+        const gritText = document.getElementById('gritText');
+        const petSummonBar = document.getElementById('petSummonBar'); // New Pet Bar
+        const petSummonText = document.getElementById('petSummonText'); // New Pet Text
 
         // --- 遊戲狀態 ---
         let score = 0;
@@ -147,7 +186,6 @@
         let screenShakeDuration = 0;
         let screenShakeMagnitude = 0;
         
-        // ★ 地獄+++: 新增環境災害變數
         let meteorShowerActive = false;
         let nextMeteorShowerTime = 0;
         let meteorShowerEndTime = 0;
@@ -261,6 +299,14 @@
                     bqFilter.connect(gainNode); gainNode.gain.setValueAtTime(vol, audioCtx.currentTime);
                     gainNode.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
                     break;
+                case 'pet_summon':
+                    oscillator.type = 'triangle';
+                    duration = 0.5; vol = 0.3;
+                    oscillator.frequency.setValueAtTime(600, audioCtx.currentTime);
+                    oscillator.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + duration);
+                    gainNode.gain.setValueAtTime(vol, audioCtx.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
+                    break;
                 case 'player_hit':
                     oscillator.type = 'triangle';
                     freq1 = 200; freq2 = 100; duration = 0.2; vol = options.volume !== undefined ? options.volume : 0.3;
@@ -315,7 +361,6 @@
                     gainNode.gain.setValueAtTime(vol, audioCtx.currentTime);
                     gainNode.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
                     break;
-
             }
             oscillator.start(audioCtx.currentTime);
             oscillator.stop(audioCtx.currentTime + duration + 0.01);
@@ -343,6 +388,20 @@
             { name: '南瓜大帝', type: 'boss_pumpkin_emperor', health: 1800, width: 100, height: 100, color: '#F37021', damage: 35, specialCooldown: 8000 }
         ];
 
+        // --- Pet System ---
+        const pet = {
+            active: false,
+            worldX: 0,
+            worldY: 0,
+            width: 20,
+            height: 20,
+            duration: 15000, // 15 seconds
+            timer: 0,
+            lastAttackTime: 0,
+            attackCooldown: 800, // attacks every 0.8 seconds
+            bullets: [],
+        };
+
         // --- 玩家物件 ---
         const player = {
             worldX: 100, worldY: canvas.height - PLAYER_HEIGHT - 100,
@@ -359,13 +418,10 @@
             jumps: 2,
             maxJumps: 2,
             isDoubleJumping: false,
-
-            // ★ 地獄+++: 鬥志系統變數
             grit: 0,
-            maxGrit: 250, // 需要250點傷害來集滿
-            healAmount: 15, // 每次治療15點生命
+            maxGrit: 250,
+            healAmount: 15,
 
-            // ★ 地獄+++: 治療函式
             healWithGrit: function() {
                 if (this.grit >= this.maxGrit && playerHealth > 0 && playerHealth < 100) {
                     this.grit = 0;
@@ -373,6 +429,20 @@
                     playSound('pickup_health');
                     createParticles(this.worldX + this.width / 2, this.worldY + this.height / 2, 20, '#2ecc71', 4);
                     messageDisplay.textContent = `鬥志爆發，恢復 ${this.healAmount} 生命！`;
+                    setTimeout(() => messageDisplay.textContent = "", 1500);
+                }
+            },
+
+            summonPet: function() {
+                if (this.grit >= this.maxGrit && !pet.active) {
+                    this.grit = 0;
+                    pet.active = true;
+                    pet.timer = pet.duration;
+                    pet.worldX = this.worldX;
+                    pet.worldY = this.worldY;
+                    playSound('pet_summon');
+                    createParticles(this.worldX + this.width / 2, this.worldY + this.height / 2, 30, '#3498db', 5);
+                    messageDisplay.textContent = `戰鬥小雞來也！`;
                     setTimeout(() => messageDisplay.textContent = "", 1500);
                 }
             },
@@ -657,9 +727,19 @@
                         this.bullets.splice(index, 1);
                     }
                 });
-                 // 更新鬥志條UI
-                gritBar.style.width = `${Math.min(100, (this.grit / this.maxGrit) * 100)}%`;
-                gritText.textContent = this.grit >= this.maxGrit ? "按 F 治療!" : "鬥志";
+                
+                // Update both resource bars' UI
+                const gritPercentage = `${Math.min(100, (this.grit / this.maxGrit) * 100)}%`;
+                gritBar.style.width = gritPercentage;
+                petSummonBar.style.width = gritPercentage;
+
+                if (this.grit >= this.maxGrit) {
+                    gritText.textContent = "按 F 治療!";
+                    petSummonText.textContent = "按 P 召喚!";
+                } else {
+                    gritText.textContent = "鬥志";
+                    petSummonText.textContent = "召喚寵物";
+                }
             }
         };
 
@@ -693,8 +773,8 @@
             this.targetX = 0;
             this.targetY = 0;
             
-            this.isElite = false; // ★ 地獄+++
-            this.lastSummonTime = 0; // ★ 地獄+++
+            this.isElite = false;
+            this.lastSummonTime = 0;
         }
 
         Enemy.prototype.draw = function() {
@@ -703,7 +783,6 @@
             
             ctx.save();
             if (this.isElite) {
-                // ★ 地獄+++: 精英敵人的光環
                 ctx.shadowBlur = 15;
                 ctx.shadowColor = this.color || '#ff00ff';
             }
@@ -796,7 +875,7 @@
             if(this.isBoss){
                  if(this.health / this.maxHealth < 0.5 && !this.isRaged) {
                       this.isRaged = true;
-                      this.shootInterval *= 0.6; // 狂暴後攻擊更快
+                      this.shootInterval *= 0.6;
                       this.specialAttackCooldown *= 0.7;
                       messageDisplay.textContent = `${activeBoss.bossName} 狂暴了！`;
                       playSound('boss_rage');
@@ -809,7 +888,6 @@
                     this.lastSpecialAttack = now;
                 }
                 
-                // ★ 地獄+++: 魔王召喚援軍
                 const summonCooldown = this.isRaged ? 6000 : 10000;
                 if (now - this.lastSummonTime > summonCooldown) {
                     this.lastSummonTime = now;
@@ -948,7 +1026,6 @@
                                 this.worldY = canvas.height - 60 - this.height;
                                 triggerScreenShake(15, 500);
                                 createParticles(this.worldX + this.width/2, this.worldY + this.height, 50, '#F37021', 10);
-                                // ★ 地獄+++: 重砸時產生衝擊波
                                 for (let i = -1; i <= 1; i += 2) {
                                     environmentalHazards.push({type: 'shockwave', x: this.worldX + this.width/2, y: canvas.height - 60, speedX: i * 8, radius: 15, duration: 60, damage: 20});
                                 }
@@ -973,7 +1050,7 @@
                         break;
                 }
 
-            } else { // 小兵邏輯
+            } else { 
                 if (this.type === 'wasp') {
                     this.worldX += this.speedX * (this.isElite ? 1.5 : 1);
                     this.worldY += this.speedY * (this.isElite ? 1.5 : 1);
@@ -1017,7 +1094,6 @@
                 }
             }
 
-            // 子彈更新
             this.bullets.forEach((bullet, index) => {
                 if(bullet.homing && bullet.lifetime > 0){
                     const angle = Math.atan2((player.worldY + player.height/2) - bullet.worldY, (player.worldX + player.width/2) - bullet.worldX);
@@ -1048,7 +1124,7 @@
         function Platform(worldX, worldY, width, height, style, type='normal') {
             this.worldX = worldX; this.worldY = worldY; this.width = width; this.height = height;
             this.style = style;
-            this.type = type; // Type is kept for potential future use, but logic is removed.
+            this.type = type;
 
             this.draw = function() {
                 const screenX = this.worldX - cameraX;
@@ -1085,9 +1161,7 @@
                 ctx.restore();
             };
 
-            this.update = function() {
-                // No update logic needed for normal platforms
-            }
+            this.update = function() {}
         }
 
         function Collectible(worldX, worldY, type, value) {
@@ -1129,15 +1203,12 @@
                 const platformHeight = 20 + Math.random() * 20;
                 const platformStyle = PLATFORM_STYLES[Math.floor(Math.random() * PLATFORM_STYLES.length)];
                 
-                // Platforms are always 'normal' now.
-                const platformType = 'normal'; 
-                platforms.push(new Platform(currentX, newPlatformY, platformWidth, platformHeight, platformStyle, platformType));
+                platforms.push(new Platform(currentX, newPlatformY, platformWidth, platformHeight, platformStyle, 'normal'));
 
                 if (!bossActive && Math.random() < 0.45 + currentMajorStage * 0.05) {
                     const enemyRand = Math.random();
                     let enemyType, enemyW, enemyH, movePattern, damage, health, isElite = false;
                     
-                    // ★ 地獄+++: 精英敵人生成
                     if (currentMajorStage > 1 && Math.random() < 0.15) { isElite = true; }
 
                     if (currentMajorStage > 1 && enemyRand < 0.15) {
@@ -1162,7 +1233,7 @@
                     const weaponKeys = ['feather_spread', 'egg_launcher'];
                     const randomWeaponKey = weaponKeys[Math.floor(Math.random() * weaponKeys.length)];
                     collectibles.push(new Collectible(currentX + platformWidth / 2, newPlatformY - 30, 'weapon', randomWeaponKey));
-                } // ★ 地獄+++: 移除了健康包的生成
+                }
                 lastPlatformY = newPlatformY; currentX += platformWidth;
             }
             worldGeneratedUpToX = Math.max(worldGeneratedUpToX, endX);
@@ -1182,12 +1253,7 @@
         function manageLevelGeneration() {
             if (bossActive) return;
             if (cameraX + canvas.width * 1.2 > worldGeneratedUpToX) { generateSegment(worldGeneratedUpToX); }
-            for (let i = platforms.length - 1; i >= 0; i--) {
-                const p = platforms[i];
-                if (p.worldX + p.width < cameraX - canvas.width) {
-                    platforms.splice(i, 1);
-                }
-            }
+            platforms = platforms.filter(p => p.worldX + p.width >= cameraX - canvas.width);
             enemies = enemies.filter(e => e.worldX + e.width > cameraX - canvas.width || e.isBoss);
             collectibles = collectibles.filter(c => c.worldX + c.width > cameraX - canvas.width);
         }
@@ -1202,7 +1268,8 @@
             if (e.code === 'Space') player.shoot(); 
             if (e.code === 'KeyS') player.useSkill();
             if (e.code === 'KeyQ' || e.code === 'KeyE') player.switchWeapon();
-            if (e.code === 'KeyF') player.healWithGrit(); // ★ 地獄+++
+            if (e.code === 'KeyF') player.healWithGrit();
+            if (e.code === 'KeyP') player.summonPet();
         });
         document.addEventListener('keyup', (e) => { keys[e.code] = false; });
         function handleInput() {
@@ -1224,7 +1291,7 @@
         }
 
         function checkCollisions() {
-            // 玩家子彈 vs 敵人
+            // Player bullets vs enemies
             player.bullets.forEach((bullet, bulletIndex) => {
                 let allTargets = enemies.concat(activeBoss ? [activeBoss] : []);
                 allTargets.forEach((target) => {
@@ -1236,7 +1303,6 @@
                         player.bullets.splice(bulletIndex, 1); 
                         target.health -= bullet.damage;
                         
-                        // ★ 地獄+++: 增加鬥志
                         if(player.grit < player.maxGrit) {
                             player.grit = Math.min(player.maxGrit, player.grit + bullet.damage);
                         }
@@ -1253,7 +1319,7 @@
                                 playMusic(false);
                                 messageDisplay.textContent = `第 ${currentMajorStage} 關魔王已被擊敗!`;
                                 setTimeout(()=> messageDisplay.textContent = "", 3000); 
-                                playerHealth = Math.min(100, playerHealth + 50); // 擊敗魔王獎勵大量生命
+                                playerHealth = Math.min(100, playerHealth + 50);
                                 currentMajorStage++;
                                 if (currentMajorStage > MAX_STAGES) { gameWon = true; }
                                 else {
@@ -1267,11 +1333,38 @@
                     }
                 });
             });
-            // 敵人子彈/環境 vs 玩家
+
+            // Pet bullets vs enemies
+            pet.bullets.forEach((bullet, bulletIndex) => {
+                let allTargets = enemies.concat(activeBoss ? [activeBoss] : []);
+                allTargets.forEach((target) => {
+                    if (!target || !pet.bullets[bulletIndex]) return;
+                    if (bullet.worldX - bullet.radius < target.worldX + target.width &&
+                        bullet.worldX + bullet.radius > target.worldX &&
+                        bullet.worldY - bullet.radius < target.worldY + target.height &&
+                        bullet.worldY + bullet.radius > target.worldY) {
+                        pet.bullets.splice(bulletIndex, 1);
+                        target.health -= bullet.damage;
+                        createParticles(bullet.worldX, bullet.worldY, 5, '#3498db', 2);
+                        if (target.health <= 0) {
+                           score += target.isBoss ? 500 * currentMajorStage : (target.isElite ? 50 : 10 + currentMajorStage * 2);
+                            createParticles(target.worldX + target.width/2, target.worldY + target.height/2, 30, target.color || '#FFFFFF', 5, true);
+                            if (target.isBoss) {
+                            } else { 
+                                playSound('enemy_die'); 
+                                const enemyIndex = enemies.indexOf(target); 
+                                if (enemyIndex > -1) enemies.splice(enemyIndex, 1); 
+                            }
+                        } else { if (target.isBoss) playSound('boss_hit'); }
+                        return;
+                    }
+                });
+            });
+
+            // Enemy bullets/environment vs player
             let allHarmfulThings = enemies.concat(activeBoss ? [activeBoss] : []);
             allHarmfulThings.forEach(source => {
                 if(!source) return;
-                // 子彈
                 source.bullets.forEach((bullet, bulletIndex) => {
                     if (bullet.worldX - bullet.radius < player.worldX + player.width && bullet.worldX + bullet.radius > player.worldX &&
                         bullet.worldY - bullet.radius < player.worldY + player.height && bullet.worldY + bullet.radius > player.worldY) {
@@ -1284,7 +1377,6 @@
                         }
                     }
                 });
-                // 直接碰撞
                  if (player.worldX < source.worldX + source.width && player.worldX + player.width > source.worldX &&
                      player.worldY < source.worldY + source.height && player.worldY + player.height > source.worldY) {
                      if (!player.invincible) {
@@ -1307,7 +1399,7 @@
                      }
                 }
             });
-            // 玩家 vs 收集品
+            // Player vs collectibles
             collectibles.forEach((item, index) => {
                 if (!item.collected && player.worldX < item.worldX + item.width && player.worldX + player.width > item.worldX &&
                     player.worldY < item.worldY + item.height && player.worldY + player.height > item.worldY) {
@@ -1352,27 +1444,83 @@
             });
         }
 
+        function updatePet() {
+            if (!pet.active) return;
+
+            pet.timer -= 1000/60;
+            if (pet.timer <= 0) {
+                pet.active = false;
+                pet.bullets = [];
+                return;
+            }
+
+            const targetX = player.worldX - (player.facingRight ? 40 : -40);
+            const targetY = player.worldY;
+            pet.worldX += (targetX - pet.worldX) * 0.1;
+            pet.worldY += (targetY - pet.worldY) * 0.1;
+
+            const now = Date.now();
+            if (now - pet.lastAttackTime > pet.attackCooldown) {
+                let closestEnemy = null;
+                let minDistance = 250;
+
+                let allTargets = enemies.concat(activeBoss ? [activeBoss] : []);
+                allTargets.forEach(enemy => {
+                     const dx = (enemy.worldX + enemy.width / 2) - (pet.worldX + pet.width / 2);
+                     const dy = (enemy.worldY + enemy.height / 2) - (pet.worldY + pet.height / 2);
+                     const distance = Math.sqrt(dx*dx + dy*dy);
+                     if(distance < minDistance) {
+                         minDistance = distance;
+                         closestEnemy = enemy;
+                     }
+                });
+
+                if (closestEnemy) {
+                    pet.lastAttackTime = now;
+                    const angle = Math.atan2((closestEnemy.worldY + closestEnemy.height/2) - pet.worldY, (closestEnemy.worldX + closestEnemy.width/2) - pet.worldX);
+                    pet.bullets.push({
+                        worldX: pet.worldX + pet.width / 2,
+                        worldY: pet.worldY + pet.height / 2,
+                        speedX: Math.cos(angle) * 6,
+                        speedY: Math.sin(angle) * 6,
+                        radius: 4,
+                        color: '#3498db',
+                        damage: 5,
+                    });
+                }
+            }
+
+            pet.bullets.forEach((bullet, index) => {
+                bullet.worldX += bullet.speedX;
+                bullet.worldY += bullet.speedY;
+                if (bullet.worldX < cameraX - 50 || bullet.worldX > cameraX + canvas.width + 50) {
+                    pet.bullets.splice(index, 1);
+                }
+            });
+        }
+
 
         function update() {
             if (!gameRunning || gameOver) return;
             const now = Date.now();
-            handleInput(); player.update(); 
+            handleInput(); 
+            player.update(); 
+            updatePet();
             updateParticles(); 
             platforms.forEach(p => p.update && p.update());
             
-            // ★ 地獄+++: 更新環境災害
             if (!bossActive) {
                 if (now > nextMeteorShowerTime) {
                     meteorShowerActive = true;
-                    meteorShowerEndTime = now + 5000 + Math.random() * 3000; // 持續5-8秒
-                    nextMeteorShowerTime = now + 15000 + Math.random() * 10000; // 15-25秒後下一次
+                    meteorShowerEndTime = now + 5000 + Math.random() * 3000;
+                    nextMeteorShowerTime = now + 15000 + Math.random() * 10000;
                     messageDisplay.textContent = "偵測到高能量反應！流星雨來襲！";
                     setTimeout(() => messageDisplay.textContent = "", 2000);
                 }
                 if (meteorShowerActive) {
                     if (now > meteorShowerEndTime) {
                         meteorShowerActive = false;
-                    } else if (Math.random() < 0.1) { // 生成頻率
+                    } else if (Math.random() < 0.1) {
                         const x = cameraX + Math.random() * canvas.width;
                         environmentalHazards.push({type: 'meteor_warning', x: x, y: canvas.height - 20, radius: 20, duration: 80, damage: 15});
                     }
@@ -1409,6 +1557,15 @@
             scoreDisplay.textContent = `分數: ${score}`; healthDisplay.textContent = `生命: ${Math.ceil(playerHealth)}`;
             stageDisplay.textContent = `大關卡: ${currentMajorStage > MAX_STAGES ? MAX_STAGES : currentMajorStage}/${MAX_STAGES}`;
             progressDisplay.textContent = `進度: ${Math.floor(player.worldX / 10)}m`;
+            
+            if (pet.active) {
+                petStatusDisplay.textContent = `寵物: 活躍中! ${Math.ceil(pet.timer/1000)}s`;
+            } else if (player.grit >= player.maxGrit) {
+                petStatusDisplay.textContent = `寵物: 可召喚 (P)`;
+            } else {
+                 petStatusDisplay.textContent = `寵物: 未召喚`;
+            }
+
 
             if (!bossActive && !gameWon && currentMajorStage <= MAX_STAGES && player.worldX >= nextBossSpawnX) {
                 bossActive = true; enemies = []; environmentalHazards = []; meteorShowerActive = false;
@@ -1447,6 +1604,29 @@
                 if (cloud.x + cloud.width < 0) { cloud.x = canvas.width; }
             });
         }
+
+        function drawPet() {
+            if (!pet.active) return;
+            
+            const screenX = pet.worldX - cameraX;
+            ctx.fillStyle = '#f1c40f';
+            ctx.beginPath();
+            ctx.arc(screenX + pet.width / 2, pet.worldY + pet.height / 2, pet.width / 2, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = 'black';
+            ctx.beginPath();
+            const eyeX = player.facingRight ? screenX + pet.width * 0.6 : screenX + pet.width * 0.2;
+            ctx.arc(eyeX, pet.worldY + pet.height * 0.4, 2, 0, Math.PI * 2);
+            ctx.fill();
+
+            pet.bullets.forEach(bullet => {
+                 ctx.beginPath();
+                 ctx.arc(bullet.worldX - cameraX, bullet.worldY, bullet.radius, 0, Math.PI * 2);
+                 ctx.fillStyle = bullet.color;
+                 ctx.fill();
+            });
+        }
         
         function draw() {
             ctx.save();
@@ -1467,7 +1647,6 @@
             platforms.forEach(p => p.draw()); 
             collectibles.forEach(c => c.draw());
             
-            // ★ 地獄+++: 繪製環境災害
             environmentalHazards.forEach(hazard => {
                 const screenHazardX = hazard.x - cameraX;
                 ctx.save();
@@ -1498,6 +1677,7 @@
             });
 
             player.draw(); 
+            drawPet();
             enemies.forEach(enemy => enemy.draw()); 
             if (activeBoss) activeBoss.draw();
             drawParticles();
@@ -1606,7 +1786,11 @@
             player.dx = 0; player.dy = 0; player.grounded = false; player.bullets = []; player.facingRight = true;
             player.invincible = false; player.invincibleTimer = 0;
             player.jumps = player.maxJumps;
-            player.grit = 0; // ★ 地獄+++
+            player.grit = 0;
+
+            pet.active = false;
+            pet.timer = 0;
+            pet.bullets = [];
 
             player.weapons = ['peck_cannon'];
             player.currentWeaponIndex = 0;
@@ -1618,7 +1802,6 @@
             platforms = []; enemies = []; collectibles = []; muzzleFlashes = []; environmentalHazards = []; particles = [];
             generateSegment(0); nextBossSpawnX = BOSS_SPAWN_INTERVAL; messageDisplay.textContent = "";
             
-            // ★ 地獄+++: 初始化災害計時器
             nextMeteorShowerTime = Date.now() + 20000 + Math.random() * 10000;
             meteorShowerActive = false;
 
